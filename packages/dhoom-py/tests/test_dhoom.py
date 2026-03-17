@@ -467,5 +467,120 @@ class TestMorphism(unittest.TestCase):
         self.assertEqual(result["orders"][1]["customer_id"], 43)
 
 
+# ---------------------------------------------------------------------------
+# v0.5 features
+# ---------------------------------------------------------------------------
+
+
+class TestStringInterning(unittest.TestCase):
+    """Test & string interning (associated bundle)."""
+
+    def test_parse_interned_modifier(self):
+        fiber = parse_fiber("data{name, status&}")
+        self.assertEqual(fiber.fields[1].modifier.type, "interned")
+
+    def test_decode_interned(self):
+        input_str = "orders{id, status&}:\n&status[completed, pending, failed]\n1, 0\n2, 1\n3, 2"
+        result = decode(input_str)
+        self.assertEqual(result["orders"][0]["status"], "completed")
+        self.assertEqual(result["orders"][1]["status"], "pending")
+        self.assertEqual(result["orders"][2]["status"], "failed")
+
+    def test_auto_detect_interned(self):
+        from dhoom.codec import _detect_interned
+        values = ["completed", "pending", "completed", "failed", "completed",
+                  "pending", "completed", "failed", "completed"]
+        pool = _detect_interned(values)
+        self.assertIsNotNone(pool)
+        self.assertIn("completed", pool)
+        self.assertIn("pending", pool)
+        self.assertIn("failed", pool)
+
+    def test_roundtrip_interned(self):
+        data = {"tasks": [
+            {"id": 1, "status": "completed"},
+            {"id": 2, "status": "pending"},
+            {"id": 3, "status": "completed"},
+            {"id": 4, "status": "failed"},
+            {"id": 5, "status": "completed"},
+            {"id": 6, "status": "pending"},
+            {"id": 7, "status": "completed"},
+            {"id": 8, "status": "failed"},
+            {"id": 9, "status": "completed"},
+        ]}
+        encoded = encode(data)
+        self.assertIn("&", encoded)
+        decoded = decode(encoded)
+        for i in range(9):
+            self.assertEqual(decoded["tasks"][i]["status"], data["tasks"][i]["status"])
+
+
+class TestComputedFields(unittest.TestCase):
+    """Test # computed fields (sheaf sections)."""
+
+    def test_parse_computed_modifier(self):
+        fiber = parse_fiber("data{price, qty, total#price*qty}")
+        self.assertEqual(fiber.fields[2].modifier.type, "computed")
+        self.assertEqual(fiber.fields[2].modifier.expr, "price*qty")
+
+    def test_decode_computed_multiply(self):
+        input_str = "data{price, qty, total#price*qty}:\n10, 3\n20, 5"
+        result = decode(input_str)
+        self.assertEqual(result["data"][0]["total"], 30)
+        self.assertEqual(result["data"][1]["total"], 100)
+
+    def test_decode_computed_add(self):
+        input_str = "data{a, b, sum#a+b}:\n1, 2\n3, 4"
+        result = decode(input_str)
+        self.assertEqual(result["data"][0]["sum"], 3)
+        self.assertEqual(result["data"][1]["sum"], 7)
+
+    def test_decode_computed_subtract(self):
+        input_str = "data{a, b, diff#a-b}:\n10, 3\n20, 5"
+        result = decode(input_str)
+        self.assertEqual(result["data"][0]["diff"], 7)
+        self.assertEqual(result["data"][1]["diff"], 15)
+
+    def test_auto_detect_computed(self):
+        from dhoom.codec import _detect_computed
+        records = [{"a": 10, "b": 3, "c": 30}, {"a": 20, "b": 5, "c": 100}]
+        expr = _detect_computed("c", [30, 100], ["a", "b", "c"], records)
+        self.assertIsNotNone(expr)
+        self.assertIn("*", expr)
+
+    def test_roundtrip_computed(self):
+        data = {"items": [
+            {"price": 10, "qty": 3, "total": 30},
+            {"price": 20, "qty": 5, "total": 100},
+            {"price": 15, "qty": 2, "total": 30},
+        ]}
+        encoded = encode(data)
+        self.assertIn("#", encoded)
+        decoded = decode(encoded)
+        for i in range(3):
+            self.assertEqual(decoded["items"][i]["total"], data["items"][i]["total"])
+
+
+class TestInlineConstraints(unittest.TestCase):
+    """Test ! inline constraints (section conditions)."""
+
+    def test_parse_constraint_modifier(self):
+        fiber = parse_fiber("data{name!str, age!int}")
+        self.assertEqual(fiber.fields[0].modifier.type, "constraint")
+        self.assertEqual(fiber.fields[0].modifier.constraint, "str")
+        self.assertEqual(fiber.fields[1].modifier.type, "constraint")
+        self.assertEqual(fiber.fields[1].modifier.constraint, "int")
+
+    def test_decode_constraint_as_regular(self):
+        input_str = "data{name!str, age!int}:\nAlice, 30\nBob, 25"
+        result = decode(input_str)
+        self.assertEqual(result["data"][0]["name"], "Alice")
+        self.assertEqual(result["data"][0]["age"], 30)
+
+    def test_parse_enum_constraint(self):
+        fiber = parse_fiber("data{role!enum:admin/user}")
+        self.assertEqual(fiber.fields[0].modifier.constraint, "enum:admin/user")
+
+
 if __name__ == "__main__":
     unittest.main()

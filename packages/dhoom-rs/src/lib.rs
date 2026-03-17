@@ -56,6 +56,12 @@ pub enum Modifier {
     Delta,
     /// Morphism reference: `->target`
     Morphism { target: String },
+    /// String interning: `&`
+    Interned { pool: Vec<String> },
+    /// Computed field: `#expr`
+    Computed { expr: String },
+    /// Inline constraint: `!constraint`
+    Constraint { constraint: String },
 }
 
 /// A single field declaration in the fiber.
@@ -78,7 +84,7 @@ impl Fiber {
     pub fn record_fields(&self) -> Vec<&FieldDecl> {
         self.fields
             .iter()
-            .filter(|f| !matches!(f.modifier, Some(Modifier::Arithmetic { .. })))
+            .filter(|f| !matches!(f.modifier, Some(Modifier::Arithmetic { .. }) | Some(Modifier::Computed { .. })))
             .collect()
     }
 
@@ -248,6 +254,34 @@ fn parse_field_decl(token: &str) -> Result<FieldDecl> {
         });
     }
 
+    // Computed: field#expr
+    if let Some(hash_pos) = token.find('#') {
+        let name = token[..hash_pos].to_string();
+        let expr = token[hash_pos + 1..].to_string();
+        return Ok(FieldDecl {
+            name,
+            modifier: Some(Modifier::Computed { expr }),
+        });
+    }
+
+    // Constraint: field!constraint
+    if let Some(bang_pos) = token.find('!') {
+        let name = token[..bang_pos].to_string();
+        let constraint = token[bang_pos + 1..].to_string();
+        return Ok(FieldDecl {
+            name,
+            modifier: Some(Modifier::Constraint { constraint }),
+        });
+    }
+
+    // Interned: field&
+    if let Some(name) = token.strip_suffix('&') {
+        return Ok(FieldDecl {
+            name: name.to_string(),
+            modifier: Some(Modifier::Interned { pool: Vec::new() }),
+        });
+    }
+
     // Delta: field^
     if let Some(name) = token.strip_suffix('^') {
         return Ok(FieldDecl {
@@ -368,21 +402,111 @@ fn decode_bundle(input: &str, line_offset: usize) -> Result<(Option<String>, Val
     })?;
 
     let header = input[..colon_pos - 1].trim(); // everything before ':'
-    let body = &input[colon_pos..];             // everything after ':'
-    let fiber = parse_fiber(header)?;
+    let body_full = &input[colon_pos..];             // everything after ':'
+    let mut fiber = parse_fiber(header)?;
+
+    // Parse pool lines for interned fields
+    let mut body_start = 0;
+    for line in body_full.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            body_start += line.len() + 1;
+            continue;
+        }
+        // Pool line: &fieldname[val1, val2, ...]
+        if trimmed.starts_with('&') {
+            if let Some(bracket_start) = trimmed.find('[') {
+                if trimmed.ends_with(']') {
+                    let field_name = &trimmed[1..bracket_start];
+                    let pool_str = &trimmed[bracket_start + 1..trimmed.len() - 1];
+                    let pool: Vec<String> = pool_str.split(',').map(|s| s.trim().to_string()).collect();
+                    // Set pool on matching field
+                    for fd in &mut fiber.fields {
+                        if fd.name == field_name {
+                            if let Some(Modifier::Interned { pool: ref mut p }) = fd.modifier {
+                                *p = pool.clone();
+                            }
+                        }
+                    }
+                    body_start += line.len() + 1;
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+    let body = &body_full[body_start..];
 
     let record_fields = fiber.record_fields();
     let has_nested = record_fields
         .iter()
         .any(|f| matches!(f.modifier, Some(Modifier::Nested)));
 
-    let records = if fiber.sparse {
+    let mut records = if fiber.sparse {
         decode_sparse_records(body, &fiber, line_offset + 1)?
     } else if has_nested {
         decode_nested_records(body, &fiber, line_offset + 1)?
     } else {
         decode_flat_records(body, &fiber, line_offset + 1)?
     };
+
+    // Resolve interned fields (map integer indices to pool values)
+    for fd in &fiber.fields {
+        if let Some(Modifier::Interned { ref pool }) = fd.modifier {
+            if pool.is_empty() { continue; }
+            for rec in &mut records {
+                if let Some(obj) = rec.as_object_mut() {
+                    if let Some(val) = obj.get(&fd.name).cloned() {
+                        if let Some(idx) = val.as_i64() {
+                            if idx >= 0 && (idx as usize) < pool.len() {
+                                obj.insert(fd.name.clone(), Value::String(pool[idx as usize].clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Evaluate computed fields
+    for fd in &fiber.fields {
+        if let Some(Modifier::Computed { ref expr }) = fd.modifier {
+            // Parse binary expression: fieldA op fieldB
+            let ops = ['*', '+', '-'];
+            let mut op_char = ' ';
+            let mut left_field = "";
+            let mut right_field = "";
+            for op in &ops {
+                if let Some(pos) = expr.find(*op) {
+                    left_field = expr[..pos].trim();
+                    right_field = expr[pos + 1..].trim();
+                    op_char = *op;
+                    break;
+                }
+            }
+            if op_char == ' ' { continue; }
+            for rec in &mut records {
+                if let Some(obj) = rec.as_object_mut() {
+                    let left = obj.get(left_field).and_then(|v| v.as_f64());
+                    let right = obj.get(right_field).and_then(|v| v.as_f64());
+                    if let (Some(l), Some(r)) = (left, right) {
+                        let result = match op_char {
+                            '*' => l * r,
+                            '+' => l + r,
+                            '-' => l - r,
+                            _ => 0.0,
+                        };
+                        let rounded = (result * 1e10).round() / 1e10;
+                        if rounded == rounded.trunc() {
+                            obj.insert(fd.name.clone(), Value::Number(Number::from(rounded as i64)));
+                        } else if let Some(n) = Number::from_f64(rounded) {
+                            obj.insert(fd.name.clone(), Value::Number(n));
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Ok((fiber.name.clone(), Value::Array(records)))
 }
@@ -690,7 +814,11 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
     let mut default_fields: Vec<(String, Value)> = Vec::new();
     let mut variable_fields: Vec<String> = Vec::new();
     let mut nested_fields: Vec<String> = Vec::new();
+    let mut computed_fields: Vec<(String, String)> = Vec::new();
+    let mut interned_fields: Vec<(String, Vec<String>)> = Vec::new();
 
+    // Phase 1: categorize nested and arithmetic
+    let mut remaining_keys: Vec<String> = Vec::new();
     for key in &keys {
         let values: Vec<&Value> = records
             .iter()
@@ -715,8 +843,33 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
             continue;
         }
 
+        remaining_keys.push(key.clone());
+    }
+
+    // Phase 2: detect computed fields among remaining keys
+    for key in remaining_keys.clone() {
+        if let Some(expr) = detect_computed_field(&key, records, &remaining_keys) {
+            computed_fields.push((key.clone(), expr));
+        }
+    }
+    for (k, _) in &computed_fields {
+        remaining_keys.retain(|r| r != k);
+    }
+
+    // Phase 3: categorize remaining as delta, interned, default, or variable
+    for key in &remaining_keys {
+        let values: Vec<&Value> = records
+            .iter()
+            .filter_map(|r| r.as_object().and_then(|o| o.get(key)))
+            .collect();
+
         if detect_delta(&values) {
             delta_fields.push(key.clone());
+            continue;
+        }
+
+        if let Some(pool) = detect_interned(&values) {
+            interned_fields.push((key.clone(), pool));
             continue;
         }
 
@@ -738,10 +891,24 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         }
     }
 
+    for (key, expr) in &computed_fields {
+        ordered_fields.push(FieldDecl {
+            name: key.clone(),
+            modifier: Some(Modifier::Computed { expr: expr.clone() }),
+        });
+    }
+
     for key in &delta_fields {
         ordered_fields.push(FieldDecl {
             name: key.clone(),
             modifier: Some(Modifier::Delta),
+        });
+    }
+
+    for (key, pool) in &interned_fields {
+        ordered_fields.push(FieldDecl {
+            name: key.clone(),
+            modifier: Some(Modifier::Interned { pool: pool.clone() }),
         });
     }
 
@@ -835,14 +1002,34 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
                 out.push_str("->");
                 out.push_str(target);
             }
+            Some(Modifier::Interned { .. }) => {
+                out.push('&');
+            }
+            Some(Modifier::Computed { ref expr }) => {
+                out.push('#');
+                out.push_str(expr);
+            }
+            Some(Modifier::Constraint { ref constraint }) => {
+                out.push('!');
+                out.push_str(constraint);
+            }
             None => {}
         }
     }
     out.push_str("}:\n");
 
+    // Emit pool lines for interned fields
+    for fd in &ordered_fields {
+        if let Some(Modifier::Interned { ref pool }) = fd.modifier {
+            if !pool.is_empty() {
+                let _ = writeln!(out, "&{}[{}]", fd.name, pool.join(", "));
+            }
+        }
+    }
+
     let rec_fields: Vec<&FieldDecl> = ordered_fields
         .iter()
-        .filter(|f| !matches!(f.modifier, Some(Modifier::Arithmetic { .. })))
+        .filter(|f| !matches!(f.modifier, Some(Modifier::Arithmetic { .. }) | Some(Modifier::Computed { .. })))
         .collect();
 
     if use_sparse {
@@ -857,7 +1044,14 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
                     match v {
                         Value::Null => {}
                         Value::String(s) if s.is_empty() => {}
-                        _ => pairs.push(format!("{}:{}", rf.name, value_to_dhoom(v))),
+                        _ => {
+                            if let Some(Modifier::Interned { ref pool }) = rf.modifier {
+                                let idx = pool.iter().position(|p| *p == value_to_dhoom(v)).unwrap_or(0);
+                                pairs.push(format!("{}:{}", rf.name, idx));
+                            } else {
+                                pairs.push(format!("{}:{}", rf.name, value_to_dhoom(v)));
+                            }
+                        }
                     }
                 }
             }
@@ -915,6 +1109,14 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
                     }
                     (Some(Modifier::Default(_)), Some(v)) => {
                         values.push(format!(":{}", value_to_dhoom(v)));
+                    }
+                    (Some(Modifier::Interned { ref pool }), Some(v)) => {
+                        if let Some(s) = v.as_str() {
+                            let idx = pool.iter().position(|p| p == s).unwrap_or(0);
+                            values.push(idx.to_string());
+                        } else {
+                            values.push(value_to_dhoom(v));
+                        }
                     }
                     (_, Some(v)) => {
                         values.push(value_to_dhoom(v));
@@ -1014,6 +1216,76 @@ fn find_modal_default(values: &[&Value]) -> Option<(Value, usize)> {
             .or_insert_with(|| ((*v).clone(), 1));
     }
     counts.into_values().max_by_key(|&(_, c)| c)
+}
+
+/// Detect if a field's string values should use string interning.
+fn detect_interned(values: &[&Value]) -> Option<Vec<String>> {
+    if values.len() < 3 {
+        return None;
+    }
+    let strings: Vec<&str> = values.iter().filter_map(|v| v.as_str()).collect();
+    if strings.len() != values.len() {
+        return None;
+    }
+    let mut distinct: Vec<String> = Vec::new();
+    for s in &strings {
+        if !distinct.iter().any(|d| d == *s) {
+            distinct.push(s.to_string());
+        }
+    }
+    if distinct.len() < 2 || distinct.len() > (values.len() + 2) / 3 {
+        return None;
+    }
+    let raw_len: usize = strings.iter().map(|s| s.len()).sum();
+    let pool_len = distinct.iter().map(|s| s.len()).sum::<usize>() + (distinct.len() - 1) * 2 + 2;
+    let index_len: usize = strings.iter().map(|s| {
+        distinct.iter().position(|d| d == *s).unwrap_or(0).to_string().len()
+    }).sum();
+    if index_len + pool_len >= raw_len * 9 / 10 {
+        return None;
+    }
+    Some(distinct)
+}
+
+/// Detect if a field can be computed from two other fields via a binary op.
+fn detect_computed_field(key: &str, records: &[Value], candidate_keys: &[String]) -> Option<String> {
+    if records.len() < 2 {
+        return None;
+    }
+    let values: Vec<f64> = records.iter().filter_map(|r| r.as_object()?.get(key)?.as_f64()).collect();
+    if values.len() != records.len() {
+        return None;
+    }
+    for op in &['*', '+', '-'] {
+        for a in candidate_keys {
+            if a == key { continue; }
+            let a_vals: Vec<f64> = records.iter().filter_map(|r| r.as_object()?.get(a.as_str())?.as_f64()).collect();
+            if a_vals.len() != records.len() { continue; }
+            for b in candidate_keys {
+                if b == key || b == a { continue; }
+                let b_vals: Vec<f64> = records.iter().filter_map(|r| r.as_object()?.get(b.as_str())?.as_f64()).collect();
+                if b_vals.len() != records.len() { continue; }
+                let mut all_match = true;
+                for i in 0..records.len() {
+                    let expected = values[i];
+                    let result = match op {
+                        '*' => a_vals[i] * b_vals[i],
+                        '+' => a_vals[i] + b_vals[i],
+                        '-' => a_vals[i] - b_vals[i],
+                        _ => 0.0,
+                    };
+                    if (result - expected).abs() > 1e-9 {
+                        all_match = false;
+                        break;
+                    }
+                }
+                if all_match {
+                    return Some(format!("{}{}{}", a, op, b));
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -1350,6 +1622,109 @@ readings{sensor_id@T-001, timestamp@1710000000+60, value, status|normal, unit|ce
             "orders": [
                 {"id": 1, "user_id": "Alice"},
                 {"id": 2, "user_id": "Bob"}
+            ]
+        });
+        assert_eq!(result, expected);
+    }
+
+    // -------------------------------------------------------------------
+    // v0.5: String Interning (&)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_interned_modifier() {
+        let fd = parse_field_decl("level&").unwrap();
+        assert_eq!(fd.name, "level");
+        assert!(matches!(fd.modifier, Some(Modifier::Interned { .. })));
+    }
+
+    #[test]
+    fn test_decode_interned_fields() {
+        let input = "logs{ts@1, level&, msg}:\n&level[INFO, WARN, ERROR]\n0, hello\n1, warning\n2, critical\n0, fine\n";
+        let result = decode(input).unwrap();
+        let arr = result["logs"].as_array().unwrap();
+        assert_eq!(arr[0]["level"], json!("INFO"));
+        assert_eq!(arr[1]["level"], json!("WARN"));
+        assert_eq!(arr[2]["level"], json!("ERROR"));
+        assert_eq!(arr[3]["level"], json!("INFO"));
+    }
+
+    #[test]
+    fn test_roundtrip_interned() {
+        let data = json!({
+            "events": [
+                {"id": 1, "status": "completed", "msg": "a"},
+                {"id": 2, "status": "completed", "msg": "b"},
+                {"id": 3, "status": "pending", "msg": "c"},
+                {"id": 4, "status": "completed", "msg": "d"},
+                {"id": 5, "status": "failed", "msg": "e"},
+                {"id": 6, "status": "completed", "msg": "f"},
+                {"id": 7, "status": "pending", "msg": "g"},
+                {"id": 8, "status": "completed", "msg": "h"},
+                {"id": 9, "status": "completed", "msg": "i"}
+            ]
+        });
+        let dhoom = encode(&data).unwrap();
+        assert!(dhoom.contains("status&"), "should use interned modifier");
+        let roundtrip = decode(&dhoom).unwrap();
+        assert_eq!(data, roundtrip);
+    }
+
+    // -------------------------------------------------------------------
+    // v0.5: Computed Fields (#)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_computed_modifier() {
+        let fd = parse_field_decl("total#qty*price").unwrap();
+        assert_eq!(fd.name, "total");
+        assert_eq!(fd.modifier, Some(Modifier::Computed { expr: "qty*price".into() }));
+    }
+
+    #[test]
+    fn test_decode_computed_fields() {
+        let input = "orders{qty, price, total#qty*price}:\n3, 10\n5, 20\n2, 15\n";
+        let result = decode(input).unwrap();
+        let arr = result["orders"].as_array().unwrap();
+        assert_eq!(arr[0]["total"], json!(30));
+        assert_eq!(arr[1]["total"], json!(100));
+        assert_eq!(arr[2]["total"], json!(30));
+    }
+
+    #[test]
+    fn test_roundtrip_computed() {
+        let data = json!({
+            "orders": [
+                {"qty": 3, "price": 10, "total": 30},
+                {"qty": 5, "price": 20, "total": 100},
+                {"qty": 2, "price": 15, "total": 30}
+            ]
+        });
+        let dhoom = encode(&data).unwrap();
+        assert!(dhoom.contains("total#"), "should use computed modifier");
+        let roundtrip = decode(&dhoom).unwrap();
+        assert_eq!(data, roundtrip);
+    }
+
+    // -------------------------------------------------------------------
+    // v0.5: Inline Constraints (!)
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_constraint_modifier() {
+        let fd = parse_field_decl("age!int").unwrap();
+        assert_eq!(fd.name, "age");
+        assert_eq!(fd.modifier, Some(Modifier::Constraint { constraint: "int".into() }));
+    }
+
+    #[test]
+    fn test_decode_constraint_as_variable() {
+        let input = "users{id!int, name!str, active!bool}:\n1, Alice, T\n2, Bob, F\n";
+        let result = decode(input).unwrap();
+        let expected = json!({
+            "users": [
+                {"id": 1, "name": "Alice", "active": true},
+                {"id": 2, "name": "Bob", "active": false}
             ]
         });
         assert_eq!(result, expected);

@@ -17,11 +17,14 @@ import (
 // ---------------------------------------------------------------------------
 
 type Modifier struct {
-	Type         string      // "arithmetic", "default", "nested", "delta", "morphism"
+	Type         string      // "arithmetic", "default", "nested", "delta", "morphism", "interned", "computed", "constraint"
 	Start        interface{} // arithmetic start value
 	Step         *int        // arithmetic step (nil = 1)
 	DefaultValue interface{} // default value
 	Target       string      // morphism target bundle name
+	Pool         []string    // interned pool values
+	Expr         string      // computed expression
+	Constraint   string      // inline constraint
 }
 
 type FieldDecl struct {
@@ -145,6 +148,21 @@ func parseFieldDecl(token string) FieldDecl {
 		return FieldDecl{Name: token[:arrowIdx], Modifier: &Modifier{Type: "morphism", Target: token[arrowIdx+2:]}}
 	}
 
+	// Computed: field#expr
+	if hashIdx := strings.Index(token, "#"); hashIdx != -1 {
+		return FieldDecl{Name: token[:hashIdx], Modifier: &Modifier{Type: "computed", Expr: token[hashIdx+1:]}}
+	}
+
+	// Constraint: field!constraint
+	if bangIdx := strings.Index(token, "!"); bangIdx != -1 {
+		return FieldDecl{Name: token[:bangIdx], Modifier: &Modifier{Type: "constraint", Constraint: token[bangIdx+1:]}}
+	}
+
+	// Interned: field&
+	if strings.HasSuffix(token, "&") {
+		return FieldDecl{Name: token[:len(token)-1], Modifier: &Modifier{Type: "interned"}}
+	}
+
 	// Delta: field^
 	if strings.HasSuffix(token, "^") {
 		return FieldDecl{Name: token[:len(token)-1], Modifier: &Modifier{Type: "delta"}}
@@ -252,7 +270,7 @@ func splitRecordFields(line string) []string {
 func recordFields(fiber Fiber) []FieldDecl {
 	var result []FieldDecl
 	for _, f := range fiber.Fields {
-		if f.Modifier == nil || f.Modifier.Type != "arithmetic" {
+		if f.Modifier == nil || (f.Modifier.Type != "arithmetic" && f.Modifier.Type != "computed") {
 			result = append(result, f)
 		}
 	}
@@ -485,6 +503,8 @@ func findHeaderEnd(input string) int {
 	return brace + 1 + colon + 1
 }
 
+var poolRegex = regexp.MustCompile(`^&(\w[\w-]*)?\[(.+)\]$`)
+
 func decodeBundle(input string) (string, interface{}, error) {
 	headerEnd := findHeaderEnd(input)
 	if headerEnd == -1 {
@@ -497,6 +517,29 @@ func decodeBundle(input string) (string, interface{}, error) {
 	if err != nil {
 		return "", nil, err
 	}
+
+	// Parse pool lines
+	bodyLines := strings.Split(body, "\n")
+	var remaining []string
+	for _, line := range bodyLines {
+		trimmed := strings.TrimSpace(line)
+		m := poolRegex.FindStringSubmatch(trimmed)
+		if m != nil {
+			poolField := m[1]
+			poolValues := strings.Split(m[2], ",")
+			for i := range poolValues {
+				poolValues[i] = strings.TrimSpace(poolValues[i])
+			}
+			for i := range fiber.Fields {
+				if fiber.Fields[i].Name == poolField && fiber.Fields[i].Modifier != nil && fiber.Fields[i].Modifier.Type == "interned" {
+					fiber.Fields[i].Modifier.Pool = poolValues
+				}
+			}
+		} else {
+			remaining = append(remaining, line)
+		}
+	}
+	body = strings.Join(remaining, "\n")
 
 	recFields := recordFields(fiber)
 	hasNested := false
@@ -518,6 +561,56 @@ func decodeBundle(input string) (string, interface{}, error) {
 
 	if records == nil {
 		records = []interface{}{}
+	}
+
+	// Post-decode: resolve interned fields
+	for _, fd := range fiber.Fields {
+		if fd.Modifier != nil && fd.Modifier.Type == "interned" && len(fd.Modifier.Pool) > 0 {
+			pool := fd.Modifier.Pool
+			for _, rec := range records {
+				if obj, ok := rec.(map[string]interface{}); ok {
+					if val, exists := obj[fd.Name]; exists {
+						if num, isNum := val.(float64); isNum {
+							idx := int(num)
+							if idx >= 0 && idx < len(pool) {
+								obj[fd.Name] = pool[idx]
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Post-decode: evaluate computed fields
+	computedExprRegex := regexp.MustCompile(`^(\w[\w-]*)\s*([+\-*])\s*(\w[\w-]*)$`)
+	for _, fd := range fiber.Fields {
+		if fd.Modifier != nil && fd.Modifier.Type == "computed" && fd.Modifier.Expr != "" {
+			m := computedExprRegex.FindStringSubmatch(fd.Modifier.Expr)
+			if m != nil {
+				leftName, op, rightName := m[1], m[2], m[3]
+				for _, rec := range records {
+					if obj, ok := rec.(map[string]interface{}); ok {
+						leftVal, lok := obj[leftName]
+						rightVal, rok := obj[rightName]
+						if lok && rok {
+							lnum, lisNum := leftVal.(float64)
+							rnum, risNum := rightVal.(float64)
+							if lisNum && risNum {
+								switch op {
+								case "+":
+									obj[fd.Name] = lnum + rnum
+								case "-":
+									obj[fd.Name] = lnum - rnum
+								case "*":
+									obj[fd.Name] = lnum * rnum
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	return fiber.Name, records, nil
@@ -700,6 +793,98 @@ func detectDelta(values []interface{}) bool {
 	return deltaLen < int(float64(absLen)*0.7)
 }
 
+func detectInterned(values []interface{}) []string {
+	if len(values) < 3 {
+		return nil
+	}
+	for _, v := range values {
+		if _, ok := v.(string); !ok {
+			return nil
+		}
+	}
+	// Build distinct list preserving order
+	seen := make(map[string]bool)
+	var distinct []string
+	for _, v := range values {
+		s := v.(string)
+		if !seen[s] {
+			seen[s] = true
+			distinct = append(distinct, s)
+		}
+	}
+	maxDistinct := int(math.Ceil(float64(len(values)) / 3.0))
+	if len(distinct) < 2 || len(distinct) > maxDistinct {
+		return nil
+	}
+	rawLen := 0
+	for _, v := range values {
+		rawLen += len(v.(string))
+	}
+	poolLen := len(distinct) - 1
+	for _, d := range distinct {
+		poolLen += len(d)
+	}
+	indexLen := len(values)
+	if poolLen+indexLen >= int(float64(rawLen)*0.9) {
+		return nil
+	}
+	return distinct
+}
+
+func detectComputed(key string, values []interface{}, allKeys []string, records []map[string]interface{}) string {
+	if len(values) == 0 {
+		return ""
+	}
+	for _, v := range values {
+		if _, isBool := v.(bool); isBool {
+			return ""
+		}
+		if _, isNum := v.(float64); !isNum {
+			return ""
+		}
+	}
+	ops := []string{"+", "-", "*"}
+	for _, op := range ops {
+		for _, a := range allKeys {
+			if a == key {
+				continue
+			}
+			for _, b := range allKeys {
+				if b == key {
+					continue
+				}
+				match := true
+				for _, r := range records {
+					av, aok := r[a].(float64)
+					bv, bok := r[b].(float64)
+					kv, kok := r[key].(float64)
+					if !aok || !bok || !kok {
+						match = false
+						break
+					}
+					var expected float64
+					switch op {
+					case "+":
+						expected = av + bv
+					case "-":
+						expected = av - bv
+					case "*":
+						expected = av * bv
+					}
+					if kv != expected {
+						match = false
+						break
+					}
+				}
+				if match {
+					return a + op + b
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func encodeBundle(name string, records []map[string]interface{}, indent int) string {
 	prefix := strings.Repeat(" ", indent)
 
@@ -716,7 +901,11 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 	defaultKeys := make(map[string]interface{})
 	nestedKeys := make(map[string]bool)
 	var variableKeys []string
+	internedKeys := make(map[string][]string)
+	computedKeys := make(map[string]string)
 
+	// Phase 1: categorize nested + arithmetic
+	var remainingKeys []string
 	for _, key := range keys {
 		values := make([]interface{}, len(records))
 		for i, r := range records {
@@ -748,9 +937,48 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 			continue
 		}
 
+		remainingKeys = append(remainingKeys, key)
+	}
+
+	// Phase 2: detect computed fields among ALL remaining keys (before delta/default)
+	var computedToRemove []string
+	for _, key := range remainingKeys {
+		values := make([]interface{}, len(records))
+		for i, r := range records {
+			values[i] = r[key]
+		}
+		expr := detectComputed(key, values, remainingKeys, records)
+		if expr != "" {
+			computedKeys[key] = expr
+			computedToRemove = append(computedToRemove, key)
+		}
+	}
+	for _, key := range computedToRemove {
+		var filtered []string
+		for _, k := range remainingKeys {
+			if k != key {
+				filtered = append(filtered, k)
+			}
+		}
+		remainingKeys = filtered
+	}
+
+	// Phase 3: categorize remaining as delta, interned, default, or variable
+	for _, key := range remainingKeys {
+		values := make([]interface{}, len(records))
+		for i, r := range records {
+			values[i] = r[key]
+		}
+
 		// Check delta
 		if detectDelta(values) {
 			deltaKeys[key] = true
+			continue
+		}
+
+		// Check interned
+		if pool := detectInterned(values); pool != nil {
+			internedKeys[key] = pool
 			continue
 		}
 
@@ -765,7 +993,7 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 	}
 
 	// Ensure at least one field produces record body content
-	if len(variableKeys) == 0 && len(deltaKeys) == 0 && len(nestedKeys) == 0 {
+	if len(variableKeys) == 0 && len(deltaKeys) == 0 && len(nestedKeys) == 0 && len(internedKeys) == 0 {
 		for _, key := range keys {
 			if arithmeticKeys[key] {
 				delete(arithmeticKeys, key)
@@ -784,6 +1012,18 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 				variableKeys = append(variableKeys, key)
 				break
 			}
+			if _, ok := computedKeys[key]; ok {
+				delete(computedKeys, key)
+				variableKeys = append(variableKeys, key)
+				break
+			}
+		}
+	}
+
+	// Computed fields
+	for _, key := range keys {
+		if expr, ok := computedKeys[key]; ok {
+			orderedFields = append(orderedFields, FieldDecl{Name: key, Modifier: &Modifier{Type: "computed", Expr: expr}})
 		}
 	}
 
@@ -791,6 +1031,13 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 	for _, key := range keys {
 		if deltaKeys[key] {
 			orderedFields = append(orderedFields, FieldDecl{Name: key, Modifier: &Modifier{Type: "delta"}})
+		}
+	}
+
+	// Interned fields
+	for _, key := range keys {
+		if pool, ok := internedKeys[key]; ok {
+			orderedFields = append(orderedFields, FieldDecl{Name: key, Modifier: &Modifier{Type: "interned", Pool: pool}})
 		}
 	}
 
@@ -838,7 +1085,9 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 	var nonArithKeys []string
 	for _, k := range keys {
 		if !arithmeticKeys[k] && !nestedKeys[k] {
-			nonArithKeys = append(nonArithKeys, k)
+			if _, isComputed := computedKeys[k]; !isComputed {
+				nonArithKeys = append(nonArithKeys, k)
+			}
 		}
 	}
 	useSparse := false
@@ -880,6 +1129,12 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 				s += "^"
 			case "morphism":
 				s += "->" + fd.Modifier.Target
+			case "interned":
+				s += "&"
+			case "computed":
+				s += "#" + fd.Modifier.Expr
+			case "constraint":
+				s += "!" + fd.Modifier.Constraint
 			}
 		}
 		headerParts = append(headerParts, s)
@@ -887,10 +1142,17 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 
 	out := fmt.Sprintf("%s%s%s{%s}:\n", prefix, sparsePrefix, name, strings.Join(headerParts, ", "))
 
+	// Emit pool lines
+	for _, key := range keys {
+		if pool, ok := internedKeys[key]; ok {
+			out += prefix + "&" + key + "[" + strings.Join(pool, ", ") + "]\n"
+		}
+	}
+
 	// Emit records
 	var recFields []FieldDecl
 	for _, f := range orderedFields {
-		if f.Modifier == nil || f.Modifier.Type != "arithmetic" {
+		if f.Modifier == nil || (f.Modifier.Type != "arithmetic" && f.Modifier.Type != "computed") {
 			recFields = append(recFields, f)
 		}
 	}
@@ -903,6 +1165,17 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 					continue
 				}
 				val := record[rf.Name]
+				if rf.Modifier != nil && rf.Modifier.Type == "interned" {
+					if s, ok := val.(string); ok && rf.Modifier.Pool != nil {
+						for idx, pv := range rf.Modifier.Pool {
+							if pv == s {
+								pairs = append(pairs, rf.Name+":"+strconv.Itoa(idx))
+								break
+							}
+						}
+						continue
+					}
+				}
 				if val != nil && val != "" {
 					pairs = append(pairs, rf.Name+":"+valueToDhoom(val))
 				}
@@ -962,6 +1235,17 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 					delta := numVal - prev
 					prevDelta[rf.Name] = numVal
 					values = append(values, valueToDhoom(delta))
+				}
+			} else if rf.Modifier != nil && rf.Modifier.Type == "interned" {
+				if s, ok := val.(string); ok && rf.Modifier.Pool != nil {
+					for idx, pv := range rf.Modifier.Pool {
+						if pv == s {
+							values = append(values, strconv.Itoa(idx))
+							break
+						}
+					}
+				} else {
+					values = append(values, valueToDhoom(val))
 				}
 			} else if rf.Modifier != nil && rf.Modifier.Type == "default" {
 				if jsonEqual(val, rf.Modifier.DefaultValue) {

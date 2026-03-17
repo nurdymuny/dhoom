@@ -14,7 +14,7 @@ Reference implementations are in `packages/`. Each implementation must:
 
 1. Pass the full test suite in `benchmarks/test-cases/`
 2. Support lossless JSON ↔ DHOOM round-trips
-3. Handle all modifiers (`@`, `|`, `>`)
+3. Handle all modifiers (`@`, `|`, `>`, `^`, `~`, `->`, `&`, `#`, `!`)
 4. Implement trailing elision correctly
 
 ### Benchmarks

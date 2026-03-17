@@ -432,3 +432,107 @@ public class MorphismTests
         Assert.Equal("Bob", result!["orders"]![1]!["user_id"]!.GetValue<string>());
     }
 }
+
+// ---------------------------------------------------------------------------
+// String Interning
+// ---------------------------------------------------------------------------
+
+public class InternedTests
+{
+    [Fact]
+    public void ParseInternedModifier()
+    {
+        var fiber = DhoomCodec.ParseFiber("data{name, status&}");
+        Assert.Equal(ModifierType.Interned, fiber.Fields[1].Mod?.Type);
+    }
+
+    [Fact]
+    public void DecodeInterned()
+    {
+        var input = "orders{id, status&}:\n&status[completed, pending, failed]\n1, 0\n2, 1\n3, 2\n";
+        var result = DhoomCodec.Decode(input);
+        Assert.Equal("completed", result!["orders"]![0]!["status"]!.GetValue<string>());
+        Assert.Equal("pending", result!["orders"]![1]!["status"]!.GetValue<string>());
+        Assert.Equal("failed", result!["orders"]![2]!["status"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void RoundtripInterned()
+    {
+        var json = """{"tasks":[{"id":1,"status":"completed"},{"id":2,"status":"pending"},{"id":3,"status":"completed"},{"id":4,"status":"failed"},{"id":5,"status":"completed"},{"id":6,"status":"pending"},{"id":7,"status":"completed"},{"id":8,"status":"failed"},{"id":9,"status":"completed"}]}""";
+        var data = JsonNode.Parse(json);
+        var dhoom = DhoomCodec.Encode(data);
+        Assert.Contains("&", dhoom);
+        var result = DhoomCodec.Decode(dhoom);
+        JsonAssert.Equal(data, result);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Computed Fields
+// ---------------------------------------------------------------------------
+
+public class ComputedTests
+{
+    [Fact]
+    public void ParseComputedModifier()
+    {
+        var fiber = DhoomCodec.ParseFiber("data{price, qty, total#price*qty}");
+        Assert.Equal(ModifierType.Computed, fiber.Fields[2].Mod?.Type);
+        Assert.Equal("price*qty", fiber.Fields[2].Mod?.Expr);
+    }
+
+    [Fact]
+    public void DecodeComputedMultiply()
+    {
+        var input = "data{price, qty, total#price*qty}:\n10, 3\n20, 5\n";
+        var result = DhoomCodec.Decode(input);
+        Assert.Equal(30L, result!["data"]![0]!["total"]!.GetValue<long>());
+        Assert.Equal(100L, result!["data"]![1]!["total"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public void DecodeComputedAdd()
+    {
+        var input = "data{a, b, sum#a+b}:\n1, 2\n3, 4\n";
+        var result = DhoomCodec.Decode(input);
+        Assert.Equal(3L, result!["data"]![0]!["sum"]!.GetValue<long>());
+        Assert.Equal(7L, result!["data"]![1]!["sum"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public void RoundtripComputed()
+    {
+        var json = """{"items":[{"price":10,"qty":3,"total":30},{"price":20,"qty":5,"total":100},{"price":15,"qty":2,"total":30}]}""";
+        var data = JsonNode.Parse(json);
+        var dhoom = DhoomCodec.Encode(data);
+        Assert.Contains("#", dhoom);
+        var result = DhoomCodec.Decode(dhoom);
+        JsonAssert.Equal(data, result);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Inline Constraints
+// ---------------------------------------------------------------------------
+
+public class ConstraintTests
+{
+    [Fact]
+    public void ParseConstraintModifier()
+    {
+        var fiber = DhoomCodec.ParseFiber("data{name!str, age!int}");
+        Assert.Equal(ModifierType.Constraint, fiber.Fields[0].Mod?.Type);
+        Assert.Equal("str", fiber.Fields[0].Mod?.Constraint);
+        Assert.Equal("int", fiber.Fields[1].Mod?.Constraint);
+    }
+
+    [Fact]
+    public void DecodeConstraintAsRegular()
+    {
+        var input = "data{name!str, age!int}:\nAlice, 30\nBob, 25\n";
+        var result = DhoomCodec.Decode(input);
+        Assert.Equal("Alice", result!["data"]![0]!["name"]!.GetValue<string>());
+        Assert.Equal(30L, result!["data"]![0]!["age"]!.GetValue<long>());
+    }
+}

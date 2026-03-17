@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,11 +30,14 @@ class DhoomError(Exception):
 
 @dataclass
 class Modifier:
-    type: str  # "arithmetic" | "default" | "nested" | "delta" | "morphism"
+    type: str  # "arithmetic" | "default" | "nested" | "delta" | "morphism" | "interned" | "computed" | "constraint"
     start: JsonValue = None
     step: int | None = None
     default_value: JsonValue = None
     target: str | None = None
+    pool: list[str] | None = None
+    expr: str | None = None
+    constraint: str | None = None
 
 
 @dataclass
@@ -122,6 +126,24 @@ def _parse_field_decl(token: str) -> FieldDecl:
         name = token[:arrow_idx]
         target = token[arrow_idx + 2:]
         return FieldDecl(name=name, modifier=Modifier(type="morphism", target=target))
+
+    # Computed: field#expr
+    hash_idx = token.find("#")
+    if hash_idx != -1:
+        name = token[:hash_idx]
+        expr = token[hash_idx + 1:]
+        return FieldDecl(name=name, modifier=Modifier(type="computed", expr=expr))
+
+    # Constraint: field!constraint
+    bang_idx = token.find("!")
+    if bang_idx != -1:
+        name = token[:bang_idx]
+        constraint = token[bang_idx + 1:]
+        return FieldDecl(name=name, modifier=Modifier(type="constraint", constraint=constraint))
+
+    # Interned: field&
+    if token.endswith("&"):
+        return FieldDecl(name=token[:-1], modifier=Modifier(type="interned"))
 
     # Delta: field^
     if token.endswith("^"):
@@ -227,7 +249,7 @@ def _find_header_end(input_str: str) -> int:
 
 
 def _record_fields(fiber: Fiber) -> list[FieldDecl]:
-    return [f for f in fiber.fields if not (f.modifier and f.modifier.type == "arithmetic")]
+    return [f for f in fiber.fields if not (f.modifier and f.modifier.type in ("arithmetic", "computed"))]
 
 
 def _decode_flat_records(body: str, fiber: Fiber) -> list[JsonValue]:
@@ -388,6 +410,9 @@ def _decode_nested_records(body: str, fiber: Fiber) -> list[JsonValue]:
     return records
 
 
+_POOL_RE = re.compile(r"^&(\w[\w-]*)?\[(.+)\]$")
+
+
 def _decode_bundle(input_str: str) -> dict:
     header_end = _find_header_end(input_str)
     if header_end == -1:
@@ -396,6 +421,21 @@ def _decode_bundle(input_str: str) -> dict:
     header = input_str[:header_end - 1].strip()
     body = input_str[header_end:]
     fiber = parse_fiber(header)
+
+    # Parse pool lines
+    body_lines = body.split("\n")
+    remaining_lines: list[str] = []
+    for line in body_lines:
+        m = _POOL_RE.match(line.strip())
+        if m:
+            pool_field = m.group(1) or ""
+            pool_values = [v.strip() for v in m.group(2).split(",")]
+            for fd in fiber.fields:
+                if fd.name == pool_field and fd.modifier and fd.modifier.type == "interned":
+                    fd.modifier.pool = pool_values
+        else:
+            remaining_lines.append(line)
+    body = "\n".join(remaining_lines)
 
     rec_fields = _record_fields(fiber)
     has_nested = any(f.modifier and f.modifier.type == "nested" for f in rec_fields)
@@ -406,6 +446,37 @@ def _decode_bundle(input_str: str) -> dict:
         records = _decode_nested_records(body, fiber)
     else:
         records = _decode_flat_records(body, fiber)
+
+    # Post-decode: resolve interned fields
+    for fd in fiber.fields:
+        if fd.modifier and fd.modifier.type == "interned" and fd.modifier.pool:
+            pool = fd.modifier.pool
+            for rec in records:
+                if isinstance(rec, dict) and fd.name in rec:
+                    val = rec[fd.name]
+                    if isinstance(val, int) and not isinstance(val, bool) and 0 <= val < len(pool):
+                        rec[fd.name] = pool[val]
+
+    # Post-decode: evaluate computed fields
+    for fd in fiber.fields:
+        if fd.modifier and fd.modifier.type == "computed" and fd.modifier.expr:
+            expr = fd.modifier.expr
+            m = re.match(r"^(\w[\w-]*)\s*([+\-*])\s*(\w[\w-]*)$", expr)
+            if m:
+                left_name, op, right_name = m.group(1), m.group(2), m.group(3)
+                for rec in records:
+                    if isinstance(rec, dict):
+                        left_val = rec.get(left_name)
+                        right_val = rec.get(right_name)
+                        if isinstance(left_val, (int, float)) and not isinstance(left_val, bool) and \
+                           isinstance(right_val, (int, float)) and not isinstance(right_val, bool):
+                            if op == "+":
+                                rec[fd.name] = left_val + right_val
+                            elif op == "-":
+                                rec[fd.name] = left_val - right_val
+                            elif op == "*":
+                                rec[fd.name] = left_val * right_val
+
     return {"name": fiber.name, "value": records}
 
 
@@ -477,6 +548,56 @@ def _detect_delta(values: list[JsonValue]) -> bool:
     return delta_len < abs_len * 0.7
 
 
+def _detect_interned(values: list[JsonValue]) -> list[str] | None:
+    if len(values) < 3:
+        return None
+    if not all(isinstance(v, str) for v in values):
+        return None
+    distinct = list(dict.fromkeys(values))
+    if len(distinct) < 2 or len(distinct) > math.ceil(len(values) / 3):
+        return None
+    raw_len = sum(len(v) for v in values)
+    pool_len = sum(len(v) for v in distinct) + len(distinct) - 1
+    index_len = len(values)
+    if pool_len + index_len >= raw_len * 0.9:
+        return None
+    return distinct
+
+
+def _detect_computed(key: str, values: list[JsonValue], all_keys: list[str], records: list[dict]) -> str | None:
+    if not values or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in values):
+        return None
+    for op in ("+", "-", "*"):
+        for a in all_keys:
+            if a == key:
+                continue
+            for b in all_keys:
+                if b == key:
+                    continue
+                match = True
+                for r in records:
+                    av = r.get(a)
+                    bv = r.get(b)
+                    if not (isinstance(av, (int, float)) and not isinstance(av, bool)):
+                        match = False
+                        break
+                    if not (isinstance(bv, (int, float)) and not isinstance(bv, bool)):
+                        match = False
+                        break
+                    if op == "+":
+                        expected = av + bv
+                    elif op == "-":
+                        expected = av - bv
+                    else:
+                        expected = av * bv
+                    if r.get(key) != expected:
+                        match = False
+                        break
+                if match:
+                    return f"{a}{op}{b}"
+    return None
+
+
 def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
     prefix = " " * indent
 
@@ -490,7 +611,11 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
     default_keys: dict[str, JsonValue] = {}
     nested_keys: set[str] = set()
     variable_keys: list[str] = []
+    interned_keys: dict[str, list[str]] = {}
+    computed_keys: dict[str, str] = {}
 
+    # Phase 1: categorize nested + arithmetic
+    remaining_keys: list[str] = []
     for key in keys:
         values = [r[key] for r in records]
 
@@ -510,9 +635,32 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
             ))
             continue
 
+        remaining_keys.append(key)
+
+    # Phase 2: detect computed fields among ALL remaining keys (before delta/default)
+    computed_to_remove: list[str] = []
+    for key in remaining_keys:
+        values = [r[key] for r in records]
+        expr = _detect_computed(key, values, remaining_keys, records)
+        if expr:
+            computed_keys[key] = expr
+            computed_to_remove.append(key)
+    for key in computed_to_remove:
+        remaining_keys.remove(key)
+
+    # Phase 3: categorize remaining as delta, interned, default, or variable
+    for key in remaining_keys:
+        values = [r[key] for r in records]
+
         # Check delta
         if _detect_delta(values):
             delta_keys.add(key)
+            continue
+
+        # Check interned
+        pool = _detect_interned(values)
+        if pool is not None:
+            interned_keys[key] = pool
             continue
 
         # Check modal default
@@ -524,7 +672,7 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
         variable_keys.append(key)
 
     # Ensure at least one field produces record body content
-    if not variable_keys and not delta_keys and not nested_keys:
+    if not variable_keys and not delta_keys and not nested_keys and not interned_keys:
         for key in keys:
             if key in arithmetic_keys:
                 arithmetic_keys.discard(key)
@@ -535,10 +683,22 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                 del default_keys[key]
                 variable_keys.append(key)
                 break
+            if key in computed_keys:
+                del computed_keys[key]
+                variable_keys.append(key)
+                break
+
+    # Computed fields
+    for key, expr in computed_keys.items():
+        ordered_fields.append(FieldDecl(name=key, modifier=Modifier(type="computed", expr=expr)))
 
     # Delta fields
     for key in delta_keys:
         ordered_fields.append(FieldDecl(name=key, modifier=Modifier(type="delta")))
+
+    # Interned fields
+    for key in interned_keys:
+        ordered_fields.append(FieldDecl(name=key, modifier=Modifier(type="interned", pool=interned_keys[key])))
 
     # Variable fields
     for key in variable_keys:
@@ -558,7 +718,7 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
         ordered_fields.append(FieldDecl(name=key, modifier=Modifier(type="nested")))
 
     # Check sparsity — use sparse mode when ≥8 non-arithmetic fields and >75% null/empty
-    non_arith_keys = [k for k in keys if k not in arithmetic_keys and k not in nested_keys]
+    non_arith_keys = [k for k in keys if k not in arithmetic_keys and k not in nested_keys and k not in computed_keys]
     use_sparse = False
     if len(non_arith_keys) >= 8:
         null_count = 0
@@ -589,12 +749,22 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                 s += "^"
             elif fd.modifier.type == "morphism":
                 s += f"->{fd.modifier.target}"
+            elif fd.modifier.type == "interned":
+                s += "&"
+            elif fd.modifier.type == "computed":
+                s += f"#{fd.modifier.expr}"
+            elif fd.modifier.type == "constraint":
+                s += f"!{fd.modifier.constraint}"
         parts.append(s)
 
     out = f"{prefix}{sparse_prefix}{name}{{{', '.join(parts)}}}:\n"
 
+    # Emit pool lines
+    for key, pool in interned_keys.items():
+        out += f"{prefix}&{key}[{', '.join(pool)}]\n"
+
     # Emit records
-    rec_fields = [f for f in ordered_fields if not (f.modifier and f.modifier.type == "arithmetic")]
+    rec_fields = [f for f in ordered_fields if not (f.modifier and f.modifier.type in ("arithmetic", "computed"))]
 
     if use_sparse:
         for record in records:
@@ -603,6 +773,12 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                 if rf.modifier and rf.modifier.type == "nested":
                     continue
                 val = record.get(rf.name)
+                if rf.modifier and rf.modifier.type == "interned":
+                    pool = rf.modifier.pool
+                    if pool and isinstance(val, str) and val in pool:
+                        idx = pool.index(val)
+                        pairs.append(f"{rf.name}:{idx}")
+                        continue
                 if val is not None and val != "":
                     pairs.append(f"{rf.name}:{value_to_dhoom(val)}")
             if not pairs:
@@ -638,6 +814,12 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                     delta = num_val - prev
                     prev_delta[rf.name] = num_val
                     values.append(value_to_dhoom(delta))
+            elif rf.modifier and rf.modifier.type == "interned":
+                pool = rf.modifier.pool
+                if pool and isinstance(val, str) and val in pool:
+                    values.append(str(pool.index(val)))
+                else:
+                    values.append(value_to_dhoom(val))
             elif rf.modifier and rf.modifier.type == "default":
                 if _json_equal(val, rf.modifier.default_value):
                     values.append("")

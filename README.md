@@ -2,7 +2,7 @@
 
 **Davis Human-readable Optimized Object Markup**
 
-[![SPEC v0.4](https://img.shields.io/badge/spec-v0.4-E8A830?labelColor=1b1b1f)](SPEC.md)
+[![SPEC v0.5](https://img.shields.io/badge/spec-v0.5-E8A830?labelColor=1b1b1f)](SPEC.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-E8A830?labelColor=1b1b1f)](LICENSE)
 
 **DHOOM** is a compact, human-readable serialization format that applies fiber bundle geometry to structured data. It encodes the same data model as JSON — objects, arrays, strings, numbers, booleans, null — but eliminates structural redundancy by exploiting arithmetic indices, modal defaults, and positional encoding.
@@ -27,6 +27,10 @@ Think of it as what happens when a differential geometer looks at JSON and says:
     - [Delta Fields (`^`) — Temporal Compression](#delta-fields---temporal-compression)
     - [Sparse Bundles (`~`) — Wide Table Compression](#sparse-bundles---wide-table-compression)
     - [Bundle Morphisms (`->`) — Cross-Bundle References](#bundle-morphisms----cross-bundle-references)
+  - [v0.5 Features](#v05-features)
+    - [String Interning (`&`) — Associated Bundles](#string-interning---associated-bundles)
+    - [Computed Fields (`#`) — Sheaf Sections](#computed-fields---sheaf-sections)
+    - [Inline Constraints (`!`) — Section Conditions](#inline-constraints---section-conditions)
   - [More Examples](#more-examples)
     - [Sensor Readings (80% reduction)](#sensor-readings-80-reduction)
     - [Nested Objects](#nested-objects)
@@ -51,6 +55,9 @@ JSON repeats field names on every record. TOON factors them into a header. DHOOM
 | Large absolute values | Repeated verbatim | Repeated verbatim | `^` — delta-encoded differences |
 | Sparse wide tables | All nulls listed | All nulls listed | `~` — named pairs, nulls omitted |
 | Cross-bundle refs | No schema support | No schema support | `->` — declared morphisms |
+| Repeated strings | Repeated M times | Repeated M times | `&` — string pool, integer indices |
+| Derivable fields | Repeated N times | Repeated N times | `#` — computed from other fields |
+| Type metadata | External schema | External schema | `!` — inline constraints |
 
 **The principle:** don't transmit what the receiver can derive.
 
@@ -117,6 +124,9 @@ Seven compression principles:
 | `^` | **Delta encoding** | Store differences, not absolutes. Parallel transport. |
 | `~` | **Sparse bundles** | Named pairs for wide tables; nulls vanish. |
 | `->` | **Bundle morphisms** | Declared foreign-key relationships between bundles. |
+| `&` | **String interning** | Pool repeated strings; records use integer indices. |
+| `#` | **Computed fields** | Derived from other fields; omitted from records. |
+| `!` | **Inline constraints** | Type/validation annotations; metadata only. |
 
 ## When to Use DHOOM
 
@@ -189,6 +199,9 @@ DHOOM's advantage scales with **structural regularity**. The sensor example achi
 | `field>` | Nested sub-bundle (child inherits name) |
 | `field^` | Delta-encoded — differences from previous record |
 | `field->target` | Morphism — foreign key referencing another bundle |
+| `field&` | Interned — string pool, integer indices in records |
+| `field#expr` | Computed — derived from other fields, omitted from records |
+| `field!constraint` | Constraint — type annotation (`!int`, `!str`, `!enum:a/b`) |
 | `~name{fields}:` | Sparse bundle — records use `name:value` pairs |
 | `:` (after header) | Schema → data separator |
 | `:value` (in record) | Default override — this field deviates |
@@ -240,6 +253,52 @@ posts{id@1, author->users, title, likes}:
 
 `author->users` declares that the `author` field references records in the `users` bundle — a foreign key. This is a **schema annotation only**; values are decoded normally. Morphisms model **bundle morphisms** *(f, g): (E₁, B₁) → (E₂, B₂)* — structure-preserving maps between fiber bundles.
 
+## v0.5 Features
+
+### String Interning (`&`) — Associated Bundles
+
+When a string field has many repeated values, interning replaces the strings with integer indices into a pool:
+
+```
+orders{id@1, status&}:
+&status[completed, pending, failed]
+1, 0
+2, 1
+3, 2
+```
+
+The pool line `&status[completed, pending, failed]` declares the vocabulary. Records use `0`, `1`, `2` instead of the full strings. The decoder resolves indices back to strings.
+
+Mathematically, this models an **associated bundle** — the pool defines a discrete fiber, and each record's index is a section of that fiber.
+
+### Computed Fields (`#`) — Sheaf Sections
+
+When a field's value can be derived from other fields, the `#` modifier declares the expression:
+
+```
+items{price, qty, total#price*qty}:
+10, 3
+20, 5
+```
+
+`total` is **omitted from records** — the decoder computes it: `10*3=30`, `20*5=100`. Supported operators: `+`, `-`, `*` between field names.
+
+This models **sheaf sections** — the computed field is a global section determined by a transition rule over the other fibers.
+
+### Inline Constraints (`!`) — Section Conditions
+
+The `!` modifier attaches type or validation metadata to a field:
+
+```
+users{name!str, age!int, role!enum:admin/editor/viewer}:
+Alice, 30, admin
+Bob, 25, viewer
+```
+
+Constraints are **metadata only** — they don't change encoding or decoding. Available types: `!int`, `!num`, `!bool`, `!str`, `!enum:val1/val2/...` (uses `/` as separator).
+
+This models **section conditions** — constraints on which sections are admissible over the fiber.
+
 ## More Examples
 
 ### Sensor Readings (80% reduction)
@@ -282,11 +341,11 @@ The nested `items` bundle applies arithmetic compression (`sku@A100`) recursivel
 
 | Language | Package | Status |
 |---|---|---|
-| TypeScript | `@dhoom-format/dhoom` | ✅ v0.4.0 — 71/71 tests |
-| Rust | `dhoom` | ✅ v0.4.0 — 27/27 tests |
-| Python | `dhoom` | ✅ v0.4.0 — 51/51 tests |
-| Go | `dhoom-go` | ✅ v0.4.0 |
-| .NET (C#) | `Dhoom` | ✅ v0.4.0 — 39/39 tests |
+| TypeScript | `@dhoom-format/dhoom` | ✅ v0.5.0 — 83/83 tests |
+| Rust | `dhoom` | ✅ v0.5.0 — 35/35 tests |
+| Python | `dhoom` | ✅ v0.5.0 — 64/64 tests |
+| Go | `dhoom-go` | ✅ v0.5.0 |
+| .NET (C#) | `Dhoom` | ✅ v0.5.0 — 48/48 tests |
 | Java | `dev.dhoom` | ✅ v0.4.0 |
 | CLI | `@dhoom-format/cli` | ✅ v0.4.0 |
 
@@ -304,6 +363,8 @@ Priority areas:
 For those who want the full story: DHOOM is derived from fiber bundle theory in differential geometry. Every homogeneous data collection admits a decomposition as a fiber bundle *(F, E, B, π)* — the schema is the fiber *F*, the index set is the base space *B*, the total space *E* is the set of all records, and each record is a section *σ: B → E*. The `|` default defines a **zero section** *σ₀*, and records encode only their **deviations** from *σ₀*. The `@` modifier compresses the base space when it has arithmetic structure. Trailing elision lets silence encode agreement.
 
 These bundles are always **trivial** — every record shares the same fiber, so *E ≅ B × F* globally. The geometric insight is not in the topology (there are no non-trivial transition functions or characteristic classes) but in the **choice of coordinates on the trivial bundle**: ordering fields and choosing a zero section to minimize each section's expression. Placing defaults at trailing positions maximizes elision — a coordinate choice on the fiber that directly reduces serialized size without affecting logical content.
+
+v0.5 extends the geometric framework with three additional operations: **associated bundles** (`&` interning — the string pool defines a discrete fiber, records are sections of the associated bundle), **sheaf sections** (`#` computed — fields determined by transition rules over other fibers), and **section conditions** (`!` constraints — admissibility restrictions on sections).
 
 For the mathematical framework, see:
 - Davis, B. R. (2024). *The Geometry of Sameness*. Amazon KDP.

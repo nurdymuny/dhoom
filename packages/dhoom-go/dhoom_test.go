@@ -535,3 +535,170 @@ func TestDecodeMorphismAsRegularValues(t *testing.T) {
 		t.Errorf("expected 'Bob', got %v", r1["user_id"])
 	}
 }
+
+// ---------------------------------------------------------------------------
+// String Interning tests
+// ---------------------------------------------------------------------------
+
+func TestParseInternedModifier(t *testing.T) {
+	fiber, _ := ParseFiber("data{name, status&}")
+	if fiber.Fields[1].Modifier == nil || fiber.Fields[1].Modifier.Type != "interned" {
+		t.Error("expected interned modifier")
+	}
+}
+
+func TestDecodeInterned(t *testing.T) {
+	input := "orders{id, status&}:\n&status[completed, pending, failed]\n1, 0\n2, 1\n3, 2\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["orders"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	r1 := arr[1].(map[string]interface{})
+	r2 := arr[2].(map[string]interface{})
+	if r0["status"] != "completed" {
+		t.Errorf("expected 'completed', got %v", r0["status"])
+	}
+	if r1["status"] != "pending" {
+		t.Errorf("expected 'pending', got %v", r1["status"])
+	}
+	if r2["status"] != "failed" {
+		t.Errorf("expected 'failed', got %v", r2["status"])
+	}
+}
+
+func TestRoundtripInterned(t *testing.T) {
+	data := parseJSON(`{"tasks":[
+		{"id":1,"status":"completed"},
+		{"id":2,"status":"pending"},
+		{"id":3,"status":"completed"},
+		{"id":4,"status":"failed"},
+		{"id":5,"status":"completed"},
+		{"id":6,"status":"pending"},
+		{"id":7,"status":"completed"},
+		{"id":8,"status":"failed"},
+		{"id":9,"status":"completed"}
+	]}`)
+	dhoom, err := Encode(data)
+	if err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+	if !strings.Contains(dhoom, "&") {
+		t.Errorf("expected & in output: %q", dhoom)
+	}
+	result, err := Decode(dhoom)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if toJSON(result) != toJSON(data) {
+		t.Errorf("roundtrip mismatch:\n  want: %s\n  got:  %s", toJSON(data), toJSON(result))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Computed Fields tests
+// ---------------------------------------------------------------------------
+
+func TestParseComputedModifier(t *testing.T) {
+	fiber, _ := ParseFiber("data{price, qty, total#price*qty}")
+	if fiber.Fields[2].Modifier == nil || fiber.Fields[2].Modifier.Type != "computed" {
+		t.Error("expected computed modifier")
+	}
+	if fiber.Fields[2].Modifier.Expr != "price*qty" {
+		t.Errorf("expected expr 'price*qty', got %q", fiber.Fields[2].Modifier.Expr)
+	}
+}
+
+func TestDecodeComputedMultiply(t *testing.T) {
+	input := "data{price, qty, total#price*qty}:\n10, 3\n20, 5\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["data"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	r1 := arr[1].(map[string]interface{})
+	if r0["total"] != float64(30) {
+		t.Errorf("expected 30, got %v", r0["total"])
+	}
+	if r1["total"] != float64(100) {
+		t.Errorf("expected 100, got %v", r1["total"])
+	}
+}
+
+func TestDecodeComputedAdd(t *testing.T) {
+	input := "data{a, b, sum#a+b}:\n1, 2\n3, 4\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["data"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	r1 := arr[1].(map[string]interface{})
+	if r0["sum"] != float64(3) {
+		t.Errorf("expected 3, got %v", r0["sum"])
+	}
+	if r1["sum"] != float64(7) {
+		t.Errorf("expected 7, got %v", r1["sum"])
+	}
+}
+
+func TestRoundtripComputed(t *testing.T) {
+	data := parseJSON(`{"items":[
+		{"price":10,"qty":3,"total":30},
+		{"price":20,"qty":5,"total":100},
+		{"price":15,"qty":2,"total":30}
+	]}`)
+	dhoom, err := Encode(data)
+	if err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+	if !strings.Contains(dhoom, "#") {
+		t.Errorf("expected # in output: %q", dhoom)
+	}
+	result, err := Decode(dhoom)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	if toJSON(result) != toJSON(data) {
+		t.Errorf("roundtrip mismatch:\n  want: %s\n  got:  %s", toJSON(data), toJSON(result))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Inline Constraints tests
+// ---------------------------------------------------------------------------
+
+func TestParseConstraintModifier(t *testing.T) {
+	fiber, _ := ParseFiber("data{name!str, age!int}")
+	if fiber.Fields[0].Modifier == nil || fiber.Fields[0].Modifier.Type != "constraint" {
+		t.Error("expected constraint modifier for name")
+	}
+	if fiber.Fields[0].Modifier.Constraint != "str" {
+		t.Errorf("expected constraint 'str', got %q", fiber.Fields[0].Modifier.Constraint)
+	}
+	if fiber.Fields[1].Modifier.Constraint != "int" {
+		t.Errorf("expected constraint 'int', got %q", fiber.Fields[1].Modifier.Constraint)
+	}
+}
+
+func TestDecodeConstraintAsRegular(t *testing.T) {
+	input := "data{name!str, age!int}:\nAlice, 30\nBob, 25\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["data"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	if r0["name"] != "Alice" {
+		t.Errorf("expected 'Alice', got %v", r0["name"])
+	}
+	if r0["age"] != float64(30) {
+		t.Errorf("expected 30, got %v", r0["age"])
+	}
+}

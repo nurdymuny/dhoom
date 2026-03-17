@@ -19,11 +19,14 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export interface Modifier {
-  type: "arithmetic" | "default" | "nested" | "delta" | "morphism";
+  type: "arithmetic" | "default" | "nested" | "delta" | "morphism" | "interned" | "computed" | "constraint";
   start?: JsonValue;
   step?: number;
   defaultValue?: JsonValue;
   target?: string;
+  pool?: string[];
+  expr?: string;
+  constraint?: string;
 }
 
 export interface FieldDecl {
@@ -111,6 +114,27 @@ function parseFieldDecl(token: string): FieldDecl {
     const name = token.slice(0, arrowIdx);
     const target = token.slice(arrowIdx + 2);
     return { name, modifier: { type: "morphism", target } };
+  }
+
+  // Computed: field#expr
+  const hashIdx = token.indexOf("#");
+  if (hashIdx !== -1) {
+    const name = token.slice(0, hashIdx);
+    const expr = token.slice(hashIdx + 1);
+    return { name, modifier: { type: "computed", expr } };
+  }
+
+  // Constraint: field!constraint
+  const bangIdx = token.indexOf("!");
+  if (bangIdx !== -1) {
+    const name = token.slice(0, bangIdx);
+    const constraint = token.slice(bangIdx + 1);
+    return { name, modifier: { type: "constraint", constraint } };
+  }
+
+  // Interned: field&
+  if (token.endsWith("&")) {
+    return { name: token.slice(0, -1), modifier: { type: "interned" } };
   }
 
   // Delta: field^
@@ -235,7 +259,7 @@ function findHeaderEnd(input: string): number {
 }
 
 function recordFields(fiber: Fiber): FieldDecl[] {
-  return fiber.fields.filter((f) => f.modifier?.type !== "arithmetic");
+  return fiber.fields.filter((f) => f.modifier?.type !== "arithmetic" && f.modifier?.type !== "computed");
 }
 
 function decodeFlatRecords(body: string, fiber: Fiber): JsonValue[] {
@@ -351,8 +375,35 @@ function decodeBundle(input: string): { name?: string; value: JsonValue } {
   }
 
   const header = input.slice(0, headerEnd - 1).trim();
-  const body = input.slice(headerEnd);
+  let body = input.slice(headerEnd);
   const fiber = parseFiber(header);
+
+  // Parse pool lines for interned fields
+  const pools = new Map<string, string[]>();
+  const bodyLines = body.split("\n");
+  let poolEnd = 0;
+  for (let i = 0; i < bodyLines.length; i++) {
+    const trimmed = bodyLines[i].trim();
+    if (trimmed === "") { poolEnd = i + 1; continue; }
+    const poolMatch = trimmed.match(/^&(\w[\w-]*)?\[(.+)\]$/);
+    if (poolMatch) {
+      const fieldName = poolMatch[1];
+      const poolValues = poolMatch[2].split(",").map((s) => s.trim());
+      pools.set(fieldName, poolValues);
+      // Store pool on the field modifier
+      for (const fd of fiber.fields) {
+        if (fd.name === fieldName && fd.modifier?.type === "interned") {
+          fd.modifier.pool = poolValues;
+        }
+      }
+      poolEnd = i + 1;
+    } else {
+      break;
+    }
+  }
+  if (poolEnd > 0) {
+    body = bodyLines.slice(poolEnd).join("\n");
+  }
 
   const recFields = recordFields(fiber);
   const hasNested = recFields.some((f) => f.modifier?.type === "nested");
@@ -364,6 +415,47 @@ function decodeBundle(input: string): { name?: string; value: JsonValue } {
     records = decodeNestedRecords(body, fiber);
   } else {
     records = decodeFlatRecords(body, fiber);
+  }
+
+  // Resolve interned fields (map integer indices to pool values)
+  for (const fd of fiber.fields) {
+    if (fd.modifier?.type === "interned" && fd.modifier.pool) {
+      const pool = fd.modifier.pool;
+      for (const rec of records) {
+        const obj = rec as Record<string, JsonValue>;
+        const idx = obj[fd.name];
+        if (typeof idx === "number" && idx >= 0 && idx < pool.length) {
+          obj[fd.name] = pool[idx];
+        }
+      }
+    }
+  }
+
+  // Evaluate computed fields
+  for (const fd of fiber.fields) {
+    if (fd.modifier?.type === "computed" && fd.modifier.expr) {
+      const expr = fd.modifier.expr;
+      const opMatch = expr.match(/^(\w[\w-]*)\s*([+\-*])\s*(\w[\w-]*)$/);
+      if (opMatch) {
+        const [, leftField, op, rightField] = opMatch;
+        for (const rec of records) {
+          const obj = rec as Record<string, JsonValue>;
+          const left = obj[leftField];
+          const right = obj[rightField];
+          if (typeof left === "number" && typeof right === "number") {
+            let result: number;
+            switch (op) {
+              case "*": result = left * right; break;
+              case "+": result = left + right; break;
+              case "-": result = left - right; break;
+              default: result = 0;
+            }
+            // Round to avoid floating point artifacts
+            obj[fd.name] = Math.round(result * 1e10) / 1e10;
+          }
+        }
+      }
+    }
   }
 
   return { name: fiber.name, value: records };
@@ -532,6 +624,59 @@ function detectDelta(values: JsonValue[]): boolean {
   return deltaLen < absLen * 0.7;
 }
 
+function detectInterned(values: JsonValue[]): string[] | null {
+  if (values.length < 3) return null;
+  if (!values.every((v) => typeof v === "string")) return null;
+  const strs = values as string[];
+  const distinct = [...new Set(strs)];
+  if (distinct.length < 2) return null;
+  if (distinct.length > Math.ceil(values.length / 3)) return null;
+  const rawLen = strs.reduce((sum, s) => sum + s.length, 0);
+  const poolLen = distinct.join(", ").length + 2;
+  const indexLen = strs.reduce((sum, s) => sum + String(distinct.indexOf(s)).length, 0);
+  if (indexLen + poolLen >= rawLen * 0.9) return null;
+  return distinct;
+}
+
+function detectComputed(
+  key: string,
+  records: Record<string, JsonValue>[],
+  candidateKeys: string[],
+): { expr: string } | null {
+  if (records.length < 2) return null;
+  const values = records.map((r) => r[key]);
+  if (!values.every((v) => typeof v === "number")) return null;
+
+  for (const op of ["*", "+", "-"] as const) {
+    for (const a of candidateKeys) {
+      if (a === key) continue;
+      const aVals = records.map((r) => r[a]);
+      if (!aVals.every((v) => typeof v === "number")) continue;
+      for (const b of candidateKeys) {
+        if (b === key || b === a) continue;
+        const bVals = records.map((r) => r[b]);
+        if (!bVals.every((v) => typeof v === "number")) continue;
+
+        let match = true;
+        for (let i = 0; i < records.length; i++) {
+          const expected = values[i] as number;
+          const aVal = aVals[i] as number;
+          const bVal = bVals[i] as number;
+          let result: number;
+          switch (op) {
+            case "*": result = aVal * bVal; break;
+            case "+": result = aVal + bVal; break;
+            case "-": result = aVal - bVal; break;
+          }
+          if (Math.abs(result - expected) > 1e-9) { match = false; break; }
+        }
+        if (match) return { expr: `${a}${op}${b}` };
+      }
+    }
+  }
+  return null;
+}
+
 function encodeBundle(
   name: string,
   records: Record<string, JsonValue>[],
@@ -550,7 +695,11 @@ function encodeBundle(
   const defaultKeys = new Map<string, JsonValue>();
   const nestedKeys = new Set<string>();
   const variableKeys: string[] = [];
+  const computedKeys = new Map<string, string>();
+  const internedKeys = new Map<string, string[]>();
 
+  // Phase 1: categorize nested and arithmetic
+  const remainingKeys: string[] = [];
   for (const key of keys) {
     const values = records.map((r) => r[key]);
 
@@ -575,9 +724,32 @@ function encodeBundle(
       continue;
     }
 
-    // Check delta (integer sequences where deltas are significantly shorter)
+    remainingKeys.push(key);
+  }
+
+  // Phase 2: detect computed fields among all remaining keys
+  for (const key of [...remainingKeys]) {
+    const computed = detectComputed(key, records, remainingKeys);
+    if (computed) {
+      computedKeys.set(key, computed.expr);
+      remainingKeys.splice(remainingKeys.indexOf(key), 1);
+    }
+  }
+
+  // Phase 3: categorize remaining keys as delta, interned, default, or variable
+  for (const key of remainingKeys) {
+    const values = records.map((r) => r[key]);
+
+    // Check delta
     if (detectDelta(values)) {
       deltaKeys.add(key);
+      continue;
+    }
+
+    // Check interned
+    const pool = detectInterned(values);
+    if (pool) {
+      internedKeys.set(key, pool);
       continue;
     }
 
@@ -592,7 +764,8 @@ function encodeBundle(
   }
 
   // Ensure at least one field produces record body content
-  if (variableKeys.length === 0 && deltaKeys.size === 0 && nestedKeys.size === 0) {
+  if (variableKeys.length === 0 && deltaKeys.size === 0 && nestedKeys.size === 0
+      && internedKeys.size === 0) {
     for (const key of keys) {
       if (arithmeticKeys.has(key)) {
         arithmeticKeys.delete(key);
@@ -609,9 +782,19 @@ function encodeBundle(
     }
   }
 
+  // Computed fields
+  for (const [key, expr] of computedKeys) {
+    orderedFields.push({ name: key, modifier: { type: "computed", expr } });
+  }
+
   // Delta fields
   for (const key of deltaKeys) {
     orderedFields.push({ name: key, modifier: { type: "delta" } });
+  }
+
+  // Interned fields
+  for (const [key, pool] of internedKeys) {
+    orderedFields.push({ name: key, modifier: { type: "interned", pool } });
   }
 
   // Variable fields
@@ -667,14 +850,25 @@ function encodeBundle(
         s += "^";
       } else if (fd.modifier?.type === "morphism") {
         s += `->${fd.modifier.target}`;
+      } else if (fd.modifier?.type === "interned") {
+        s += "&";
+      } else if (fd.modifier?.type === "computed") {
+        s += `#${fd.modifier.expr}`;
       }
       return s;
     })
     .join(", ");
   out += "}:\n";
 
+  // Emit pool lines for interned fields
+  for (const fd of orderedFields) {
+    if (fd.modifier?.type === "interned" && fd.modifier.pool) {
+      out += `${prefix}&${fd.name}[${fd.modifier.pool.join(", ")}]\n`;
+    }
+  }
+
   // Emit records
-  const recFields = orderedFields.filter((f) => f.modifier?.type !== "arithmetic");
+  const recFields = orderedFields.filter((f) => f.modifier?.type !== "arithmetic" && f.modifier?.type !== "computed");
 
   if (useSparse) {
     // Sparse mode: emit field:value pairs for non-null values
@@ -684,7 +878,12 @@ function encodeBundle(
         if (rf.modifier?.type === "nested") continue;
         const val = record[rf.name];
         if (val !== null && val !== undefined && val !== "") {
-          pairs.push(`${rf.name}:${valueTodhoom(val)}`);
+          if (rf.modifier?.type === "interned" && rf.modifier.pool) {
+            const idx = rf.modifier.pool.indexOf(typeof val === "string" ? val : String(val));
+            pairs.push(`${rf.name}:${idx >= 0 ? idx : 0}`);
+          } else {
+            pairs.push(`${rf.name}:${valueTodhoom(val)}`);
+          }
         }
       }
       if (pairs.length === 0) {
@@ -731,6 +930,9 @@ function encodeBundle(
         } else {
           values.push(`:${valueTodhoom(val)}`);
         }
+      } else if (rf.modifier?.type === "interned" && rf.modifier.pool) {
+        const idx = rf.modifier.pool.indexOf(typeof val === "string" ? val : String(val));
+        values.push(String(idx >= 0 ? idx : 0));
       } else {
         values.push(valueTodhoom(val));
       }
@@ -803,7 +1005,11 @@ function buildFiberMeta(
   const nestedKeys = new Set<string>();
   const variableKeys: string[] = [];
   const deltaKeys = new Set<string>();
+  const computedKeys = new Map<string, string>();
+  const internedKeys = new Map<string, string[]>();
 
+  // Phase 1: categorize nested and arithmetic
+  const remainingKeys: string[] = [];
   for (const key of keys) {
     const values = records.map((r) => r[key]);
 
@@ -826,8 +1032,30 @@ function buildFiberMeta(
       continue;
     }
 
+    remainingKeys.push(key);
+  }
+
+  // Phase 2: detect computed fields among all remaining keys
+  for (const key of [...remainingKeys]) {
+    const computed = detectComputed(key, records, remainingKeys);
+    if (computed) {
+      computedKeys.set(key, computed.expr);
+      remainingKeys.splice(remainingKeys.indexOf(key), 1);
+    }
+  }
+
+  // Phase 3: categorize remaining keys as delta, interned, default, or variable
+  for (const key of remainingKeys) {
+    const values = records.map((r) => r[key]);
+
     if (detectDelta(values)) {
       deltaKeys.add(key);
+      continue;
+    }
+
+    const pool = detectInterned(values);
+    if (pool) {
+      internedKeys.set(key, pool);
       continue;
     }
 
@@ -841,7 +1069,8 @@ function buildFiberMeta(
   }
 
   // Ensure at least one field produces record body content
-  if (variableKeys.length === 0 && deltaKeys.size === 0 && nestedKeys.size === 0) {
+  if (variableKeys.length === 0 && deltaKeys.size === 0 && nestedKeys.size === 0
+      && internedKeys.size === 0) {
     for (const key of keys) {
       if (arithmeticKeys.has(key)) {
         arithmeticKeys.delete(key);
@@ -858,8 +1087,18 @@ function buildFiberMeta(
     }
   }
 
+  // Computed fields
+  for (const [key, expr] of computedKeys) {
+    orderedFields.push({ name: key, modifier: { type: "computed", expr } });
+  }
+
   for (const key of deltaKeys) {
     orderedFields.push({ name: key, modifier: { type: "delta" } });
+  }
+
+  // Interned fields
+  for (const [key, pool] of internedKeys) {
+    orderedFields.push({ name: key, modifier: { type: "interned", pool } });
   }
 
   for (const key of variableKeys) {
@@ -894,13 +1133,26 @@ function buildFiberMeta(
         s += "^";
       } else if (fd.modifier?.type === "morphism") {
         s += `->${fd.modifier.target}`;
+      } else if (fd.modifier?.type === "interned") {
+        s += "&";
+      } else if (fd.modifier?.type === "computed") {
+        s += `#${fd.modifier.expr}`;
       }
       return s;
     })
     .join(", ");
   header += "}:";
 
-  const recFields = orderedFields.filter((f) => f.modifier?.type !== "arithmetic");
+  // Prepend pool lines for interned fields
+  let poolLines = "";
+  for (const fd of orderedFields) {
+    if (fd.modifier?.type === "interned" && fd.modifier.pool) {
+      poolLines += `&${fd.name}[${fd.modifier.pool.join(", ")}]\n`;
+    }
+  }
+  if (poolLines) header += "\n" + poolLines.trimEnd();
+
+  const recFields = orderedFields.filter((f) => f.modifier?.type !== "arithmetic" && f.modifier?.type !== "computed");
   return { header, orderedFields, recFields };
 }
 
@@ -932,6 +1184,9 @@ function encodeRecordLine(
       }
     } else if (rf.modifier?.type === "default") {
       values.push(jsonEqual(val, rf.modifier.defaultValue!) ? "" : `:${valueTodhoom(val)}`);
+    } else if (rf.modifier?.type === "interned" && rf.modifier.pool) {
+      const idx = rf.modifier.pool.indexOf(typeof val === "string" ? val : String(val));
+      values.push(String(idx >= 0 ? idx : 0));
     } else {
       values.push(valueTodhoom(val));
     }

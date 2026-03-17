@@ -1,4 +1,4 @@
-# DHOOM Specification v0.4
+# DHOOM Specification v0.5
 
 **Davis Human-readable Optimized Object Markup**
 
@@ -85,6 +85,9 @@ A field may have exactly one modifier:
 | Nested bundle | `field>` | Field contains a child bundle. |
 | Delta | `field^` | Values are delta-encoded. First record is absolute; subsequent are deltas. |
 | Morphism | `field->target` | Field values reference records in the named target bundle. |
+| Interned | `field&` | String pool. Record values are integer indices into the pool. |
+| Computed | `field#expr` | Derived from other fields. Omitted from records. |
+| Constraint | `field!constraint` | Type/validation annotation. Metadata only. |
 
 If a field has no modifier, it is a **variable field** — its value must appear in every record.
 
@@ -249,7 +252,7 @@ When converting from JSON, the encoder should use `T`/`F` for booleans and unquo
 
 ```ebnf
 document     = bundle
-bundle       = "~"? name? "{" fiber "}" ":" body
+bundle       = "~"? name? "{" fiber "}" ":" pool* body
 fiber        = field ( "," field )*
 field        = identifier modifier?
 modifier     = "@" start ( "+" step )?
@@ -257,6 +260,13 @@ modifier     = "@" start ( "+" step )?
              | ">"
              | "^"
              | "->" identifier
+             | "&"
+             | "#" expression
+             | "!" constraint
+expression   = identifier ( "*" | "+" | "-" ) identifier
+constraint   = "int" | "num" | "bool" | "str" | "enum:" enum_list
+enum_list    = value ( "," value )*
+pool         = "&" identifier "[" value ( "," value )* "]" NEWLINE
 body         = ε | record ( NEWLINE record )*
 record       = entry ( "," entry )*
 entry        = value
@@ -276,22 +286,26 @@ identifier   = [A-Za-z_][A-Za-z0-9_-]*
 
 1. Identify homogeneous arrays (arrays where all elements are objects with identical keys).
 2. For each homogeneous array, construct a fiber header from the keys.
-3. Analyze field values across all records to identify arithmetic sequences, delta-compressible fields, and modal defaults.
-4. Order the fiber: arithmetic fields first, then variable and delta fields, then defaulted fields (sorted by default frequency descending), then nested fields.
+3. Analyze field values across all records to identify arithmetic sequences, computed relationships, delta-compressible fields, internable strings, and modal defaults.
+4. Order the fiber: arithmetic fields first, then computed fields, then delta and variable fields (including interned), then defaulted fields (sorted by default frequency descending), then nested fields.
 5. **Guard:** If every non-nested field would be classified as arithmetic or default (leaving no variable or delta fields), demote the first field back to variable. This ensures every record has at least one explicit value in the body — otherwise trailing elision would produce empty lines indistinguishable from blank separators.
-6. For each record, emit only non-arithmetic, non-default values. Use `:` prefix for default overrides. Elide trailing defaults. For delta fields, emit the absolute value in the first record and the difference from the previous record's value in subsequent records.
-7. If the bundle is sparse (>75% of non-arithmetic field values are null/empty and there are ≥8 fields), emit with `~` prefix and use named `field:value` pairs in records.
+6. Emit pool declaration lines (`&field[...]`) for each interned field.
+7. For each record, emit only non-arithmetic, non-computed, non-default values. Use `:` prefix for default overrides. Elide trailing defaults. For delta fields, emit the absolute value in the first record and the difference from the previous record's value in subsequent records. For interned fields, emit the integer pool index.
+8. If the bundle is sparse (>75% of non-arithmetic field values are null/empty and there are ≥8 fields), emit with `~` prefix and use named `field:value` pairs in records.
 
 ### 10.2 DHOOM → JSON (Decoding)
 
 1. Parse the fiber header to extract field names, arithmetic generators, defaults, delta markers, and morphism references.
 2. Check for the `~` sparse bundle prefix.
-3. For each record, map positional values to non-arithmetic fields (or parse named `field:value` pairs in sparse mode).
-4. Compute arithmetic field values from record ordinal.
-5. For delta fields, accumulate: first record value is absolute; subsequent values are added to the previous record's accumulated value.
-6. Fill trailing omitted fields with declared defaults. In sparse mode, fill unlisted fields with `null` (or their default if declared).
-7. Interpret `:` prefixed values as default overrides.
-8. Assemble the complete JSON object.
+3. Parse pool declaration lines (`&field[...]`) to build string pools for interned fields.
+4. For each record, map positional values to non-arithmetic, non-computed fields (or parse named `field:value` pairs in sparse mode).
+5. Compute arithmetic field values from record ordinal.
+6. For interned fields, map the integer index to the corresponding pool value.
+7. For computed fields, evaluate the expression using other field values from the same record.
+8. For delta fields, accumulate: first record value is absolute; subsequent values are added to the previous record's accumulated value.
+9. Fill trailing omitted fields with declared defaults. In sparse mode, fill unlisted fields with `null` (or their default if declared).
+10. Interpret `:` prefixed values as default overrides.
+11. Assemble the complete JSON object.
 
 ### 10.3 Round-Trip Guarantee
 
@@ -301,7 +315,11 @@ DHOOM ↔ JSON conversion is **lossless**. `decode(encode(json))` produces a JSO
 
 For a collection of *N* records with *K* fields, of which *A* are arithmetic and *D* have defaults matching in *M* records:
 
-**Fields omitted** ≥ (*A* × *N*) + (*D* × *M*)
+Let *C* be the number of computed fields.
+
+**Fields omitted** ≥ (*A* × *N*) + (*C* × *N*) + (*D* × *M*)
+
+**Characters saved by interning** ≈ Σ over interned fields: *N* × (avg_string_length − avg_index_digits)
 
 **Optimal field ordering:** Place all *D* defaulted fields at trailing positions to maximize trailing elision.
 
@@ -346,7 +364,7 @@ Decodes to:
 
 - A conforming encoder should only emit `^` when all values are numeric (integer or float) and the total character count of deltas is at least 30% shorter than absolute values.
 - Delta fields appear in the record body (unlike arithmetic fields which are omitted).
-- A field may have at most one modifier; `^` is mutually exclusive with `@`, `|`, `>`, and `->`.
+- A field may have at most one modifier; `^` is mutually exclusive with `@`, `|`, `>`, `->`, `&`, `#`, and `!`.
 
 ## 13. Sparse Bundles (`~`)
 
@@ -415,9 +433,159 @@ Here `author->users` declares that the `author` field's values (2, 1, 3) are for
 
 - The `->target` modifier is purely declarative. A conforming decoder treats the field value the same as a plain variable field.
 - Morphisms model **bundle morphisms** *(f, g): (E₁, B₁) → (E₂, B₂)* — structure-preserving maps between fiber bundles.
-- A field may have at most one modifier; `->` is mutually exclusive with `@`, `|`, `>`, and `^`.
+- A field may have at most one modifier; `->` is mutually exclusive with `@`, `|`, `>`, `^`, `&`, `#`, and `!`.
 
-## 12. Comparison to Prior Art
+## 15. String Interning (`&`)
+
+### 15.1 Declaration
+
+```
+level&        →  values are interned via a string pool
+```
+
+The `&` modifier marks a field as **interned**. An interned field uses a string pool: the encoder emits a pool declaration line after the header, and records use compact integer indices instead of full string values.
+
+### 15.2 Pool Declaration
+
+Immediately after the header line (before any record lines), interned fields declare their pool:
+
+```
+&fieldname[value0, value1, value2, ...]
+```
+
+The pool is an ordered list of distinct string values. Index 0 corresponds to the first value, index 1 to the second, and so on.
+
+Multiple interned fields emit multiple pool lines, one per field.
+
+### 15.3 Example
+
+```
+logs{ts@1000+60, level&, msg, source&}:
+&level[INFO, WARN, ERROR]
+&source[api, db, auth]
+0, request completed, 0
+2, disk full, 1
+0, user connected, 2
+1, slow query, 1
+```
+
+Decodes to:
+
+| ts | level | msg | source |
+|---|---|---|---|
+| 1000 | INFO | request completed | api |
+| 1060 | ERROR | disk full | db |
+| 1120 | INFO | user connected | auth |
+| 1180 | WARN | slow query | db |
+
+### 15.4 Applicability
+
+A conforming encoder should consider interning when:
+- All values for the field are strings.
+- The field has at least **2** distinct values.
+- The collection has at least **3** records.
+- The total character count using indices is at least **10%** shorter than using full strings.
+
+### 15.5 Geometric Interpretation
+
+Interning models an **associated bundle** construction. The symmetric group acts on the fiber by permuting repeated string values. The pool is the **orbit space** — each orbit (set of identical values) is represented once. The integer index is the canonical representative of the orbit, and the pool line defines the isomorphism between orbit labels and original values.
+
+## 16. Computed Fields (`#`)
+
+### 16.1 Declaration
+
+```
+total#price*qty   →  total = price × qty for each record
+```
+
+The `#` modifier marks a field as **computed**. The expression after `#` defines how the field's value is derived from other fields in the same record. Computed fields are **omitted** from the record body — like arithmetic fields, they never appear in records.
+
+### 16.2 Supported Expressions
+
+A computed expression is a binary operation between two field names:
+
+```
+field#fieldA*fieldB     →  multiplication
+field#fieldA+fieldB     →  addition
+field#fieldA-fieldB     →  subtraction
+```
+
+Operands must reference other fields declared in the same fiber. The operation is evaluated using the decoded numeric values of those fields for each record.
+
+### 16.3 Example
+
+```
+orders{id@1, item, price, qty, total#price*qty}:
+Widget, 49.99, 2
+Gadget, 25.00, 4
+Sprocket, 10.00, 10
+```
+
+Decodes to:
+
+| id | item | price | qty | total |
+|---|---|---|---|---|
+| 1 | Widget | 49.99 | 2 | 99.98 |
+| 2 | Gadget | 25.00 | 4 | 100.00 |
+| 3 | Sprocket | 10.00 | 10 | 100.00 |
+
+The `total` column vanishes entirely from the serialized records. The decoder reconstructs it by evaluating `price * qty` for each record.
+
+### 16.4 Applicability
+
+A conforming encoder should consider computed fields when:
+- A field's values are all numeric.
+- The field's values **exactly** equal the result of a binary operation on two other numeric fields in the same record, across **all** records.
+- The collection has at least **3** records.
+
+Only the operations `*`, `+`, and `-` are required by conforming implementations. Division is omitted to avoid floating-point precision issues.
+
+### 16.5 Geometric Interpretation
+
+Computed fields model **sheaf sections** — global assignments that are entirely determined by local data. The expression defines a section of the sheaf of functions over the base space. Since the section is fully determined by the restriction map (the formula), transmitting it would be redundant. The formula is the **descent datum**: it tells the decoder how to reconstruct the global section from the local sections already present.
+
+## 17. Inline Constraints (`!`)
+
+### 17.1 Declaration
+
+```
+age!int           →  age values must be integers
+score!num         →  score values must be numeric
+active!bool       →  active values must be boolean
+role!enum:admin,editor,viewer  →  role must be one of the listed values
+```
+
+The `!` modifier declares a **type constraint** on a field. Constraints are **metadata only** — they do not change encoding or decoding behavior. The field's values still appear in records as normal variable fields.
+
+### 17.2 Constraint Types
+
+| Constraint | Meaning |
+|---|---|
+| `!int` | All values must be integers |
+| `!num` | All values must be numeric (integer or float) |
+| `!bool` | All values must be boolean (`T`/`F`) |
+| `!str` | All values must be strings |
+| `!enum:v1,v2,...` | Values must be one of the listed options |
+
+### 17.3 Semantics
+
+- The `!` modifier is purely declarative. A conforming decoder treats the field value the same as a plain variable field.
+- Decoders **may** validate values against declared constraints and emit warnings, but **must not** reject valid DHOOM documents based solely on constraint violations.
+- Constraints model **section conditions** — restrictions on the allowed sections of the fiber bundle, defining a sub-sheaf of the full sheaf of sections.
+- A field may have at most one modifier; `!` is mutually exclusive with `@`, `|`, `>`, `^`, `->`, `&`, and `#`.
+
+### 17.4 Example
+
+```
+users{id@1, name!str, age!int, active!bool, role!enum:admin,editor,viewer}:
+Alice, 30, T, admin
+Bob, 25, T, editor
+Carol, 28, F, viewer
+```
+
+Decodes identically to the same document without constraints — the `!` annotations are informational.
+
+## 18. Comparison to Prior Art
 
 | Feature | JSON | CSV | YAML | TOON | **DHOOM** |
 |---|---|---|---|---|---|
@@ -429,10 +597,13 @@ Here `author->users` declares that the `author` field's values (2, 1, 3) are for
 | Default values | ✗ | ✗ | ✗ | ✗ | **✓** |
 | Trailing elision | ✗ | ✗ | ✗ | ✗ | **✓** |
 | Deviation marking | ✗ | ✗ | ✗ | ✗ | **✓** |
+| String interning | ✗ | ✗ | ✗ | ✗ | **✓** |
+| Computed fields | ✗ | ✗ | ✗ | ✗ | **✓** |
+| Inline constraints | ✗ | ✗ | ✗ | ✗ | **✓** |
 | Value integrity | ✓ | ✓ | ✓ | ✓ | **✓** |
 | Lossless JSON round-trip | — | ✗ | ✓ | ✓ | **✓** |
 
-## 13. References
+## 19. References
 
 - Steenrod, N. (1951). *The Topology of Fibre Bundles*. Princeton University Press.
 - Crockford, D. (2006). RFC 4627: The application/json Media Type.

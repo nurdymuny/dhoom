@@ -884,3 +884,165 @@ describe("morphism fields", () => {
     assert.equal(result.orders[1].customer_id, 43);
   });
 });
+
+// ---------------------------------------------------------------------------
+// v0.5: String Interning (&)
+// ---------------------------------------------------------------------------
+
+describe("string interning (&)", () => {
+  it("parses interned field modifier", () => {
+    const fiber = parseFiber("logs{ts, level&, msg}");
+    assert.equal(fiber.fields[1].name, "level");
+    assert.deepEqual(fiber.fields[1].modifier, { type: "interned" });
+  });
+
+  it("decodes interned fields via pool", () => {
+    const input = `logs{ts@1, level&, msg}:
+&level[INFO, WARN, ERROR]
+0, hello
+1, warning
+2, critical
+0, fine`;
+    const result = decode(input) as any;
+    assert.equal(result.logs.length, 4);
+    assert.equal(result.logs[0].level, "INFO");
+    assert.equal(result.logs[1].level, "WARN");
+    assert.equal(result.logs[2].level, "ERROR");
+    assert.equal(result.logs[3].level, "INFO");
+  });
+
+  it("encoder auto-detects internable fields", () => {
+    const data = {
+      events: [
+        { id: 1, status: "completed", msg: "a" },
+        { id: 2, status: "completed", msg: "b" },
+        { id: 3, status: "pending", msg: "c" },
+        { id: 4, status: "completed", msg: "d" },
+        { id: 5, status: "failed", msg: "e" },
+        { id: 6, status: "completed", msg: "f" },
+        { id: 7, status: "pending", msg: "g" },
+        { id: 8, status: "completed", msg: "h" },
+        { id: 9, status: "completed", msg: "i" },
+      ],
+    };
+    const encoded = encode(data);
+    assert.ok(encoded.includes("status&"), "should mark status as interned");
+    assert.ok(encoded.includes("&status["), "should emit pool line");
+  });
+
+  it("roundtrips interned fields", () => {
+    const data = {
+      events: [
+        { id: 1, status: "completed", msg: "a" },
+        { id: 2, status: "completed", msg: "b" },
+        { id: 3, status: "pending", msg: "c" },
+        { id: 4, status: "completed", msg: "d" },
+        { id: 5, status: "failed", msg: "e" },
+        { id: 6, status: "completed", msg: "f" },
+        { id: 7, status: "pending", msg: "g" },
+        { id: 8, status: "completed", msg: "h" },
+        { id: 9, status: "completed", msg: "i" },
+      ],
+    };
+    const encoded = encode(data);
+    const decoded = decode(encoded) as any;
+    assert.deepEqual(decoded.events, data.events);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.5: Computed Fields (#)
+// ---------------------------------------------------------------------------
+
+describe("computed fields (#)", () => {
+  it("parses computed field modifier", () => {
+    const fiber = parseFiber("orders{qty, price, total#qty*price}");
+    assert.equal(fiber.fields[2].name, "total");
+    assert.deepEqual(fiber.fields[2].modifier, { type: "computed", expr: "qty*price" });
+  });
+
+  it("decodes computed fields by evaluating expression", () => {
+    const input = `orders{qty, price, total#qty*price}:
+3, 10
+5, 20
+2, 15`;
+    const result = decode(input) as any;
+    assert.equal(result.orders.length, 3);
+    assert.equal(result.orders[0].total, 30);
+    assert.equal(result.orders[1].total, 100);
+    assert.equal(result.orders[2].total, 30);
+  });
+
+  it("supports addition expressions", () => {
+    const input = `data{a, b, sum#a+b}:
+1, 2
+10, 20`;
+    const result = decode(input) as any;
+    assert.equal(result.data[0].sum, 3);
+    assert.equal(result.data[1].sum, 30);
+  });
+
+  it("supports subtraction expressions", () => {
+    const input = `data{gross, tax, net#gross-tax}:
+100, 10
+200, 30`;
+    const result = decode(input) as any;
+    assert.equal(result.data[0].net, 90);
+    assert.equal(result.data[1].net, 170);
+  });
+
+  it("encoder auto-detects computed fields", () => {
+    const data = {
+      orders: [
+        { qty: 3, price: 10, total: 30 },
+        { qty: 5, price: 20, total: 100 },
+        { qty: 2, price: 15, total: 30 },
+      ],
+    };
+    const encoded = encode(data);
+    assert.ok(encoded.includes("total#"), "should detect total as computed");
+  });
+
+  it("roundtrips computed fields", () => {
+    const data = {
+      orders: [
+        { qty: 3, price: 10, total: 30 },
+        { qty: 5, price: 20, total: 100 },
+        { qty: 2, price: 15, total: 30 },
+      ],
+    };
+    const encoded = encode(data);
+    const decoded = decode(encoded) as any;
+    assert.deepEqual(decoded.orders, data.orders);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.5: Inline Constraints (!)
+// ---------------------------------------------------------------------------
+
+describe("inline constraints (!)", () => {
+  it("parses constraint modifier", () => {
+    const fiber = parseFiber("users{id!int, name!str, role!enum:admin/user}");
+    assert.equal(fiber.fields[0].name, "id");
+    assert.deepEqual(fiber.fields[0].modifier, { type: "constraint", constraint: "int" });
+    assert.equal(fiber.fields[1].name, "name");
+    assert.deepEqual(fiber.fields[1].modifier, { type: "constraint", constraint: "str" });
+    assert.equal(fiber.fields[2].name, "role");
+    assert.deepEqual(fiber.fields[2].modifier, { type: "constraint", constraint: "enum:admin/user" });
+  });
+
+  it("decodes constraint fields as regular variable fields", () => {
+    const input = `users{id!int, name!str, active!bool}:
+1, Alice, T
+2, Bob, F`;
+    const result = decode(input) as any;
+    assert.equal(result.users.length, 2);
+    assert.equal(result.users[0].id, 1);
+    assert.equal(result.users[0].name, "Alice");
+    assert.equal(result.users[0].active, true);
+    assert.equal(result.users[1].id, 2);
+    assert.equal(result.users[1].name, "Bob");
+    assert.equal(result.users[1].active, false);
+  });
+});
