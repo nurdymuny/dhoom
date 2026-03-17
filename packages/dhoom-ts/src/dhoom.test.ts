@@ -768,3 +768,119 @@ describe("edge: parseFiber edge cases", () => {
     assert.throws(() => parseFiber("no braces here"), /braces/i);
   });
 });
+
+// -----------------------------------------------------------------------
+// v0.4 Features: Delta, Sparse, Morphism
+// -----------------------------------------------------------------------
+
+describe("delta fields", () => {
+  it("parses delta modifier in fiber header", () => {
+    const fiber = parseFiber("data{ts^, value}");
+    assert.equal(fiber.fields[0].name, "ts");
+    assert.deepEqual(fiber.fields[0].modifier, { type: "delta" });
+    assert.equal(fiber.fields[1].name, "value");
+  });
+
+  it("decodes delta-encoded values", () => {
+    const input = `data{ts^, value}:
+1000, hello
+50, world
+25, foo`;
+    const result = decode(input) as any;
+    assert.equal(result.data[0].ts, 1000);
+    assert.equal(result.data[1].ts, 1050);
+    assert.equal(result.data[2].ts, 1075);
+  });
+
+  it("encodes delta when beneficial", () => {
+    // Non-arithmetic timestamps (varying deltas) with large absolute values
+    const timestamps = [1000000, 1000050, 1000120, 1000200, 1000310, 1000450, 1000600, 1000800, 1001050, 1001350];
+    const data = {
+      readings: timestamps.map((ts, i) => ({ ts, val: `s${i}` })),
+    };
+    const encoded = encode(data);
+    assert.ok(encoded.includes("^"), "should use delta encoding for ts");
+    const decoded = decode(encoded) as any;
+    for (let i = 0; i < timestamps.length; i++) {
+      assert.equal(decoded.readings[i].ts, timestamps[i]);
+    }
+  });
+
+  it("roundtrips delta-encoded data", () => {
+    const data = {
+      metrics: [
+        { timestamp: 1700000000, cpu: 45 },
+        { timestamp: 1700000060, cpu: 48 },
+        { timestamp: 1700000120, cpu: 52 },
+        { timestamp: 1700000180, cpu: 47 },
+        { timestamp: 1700000240, cpu: 50 },
+      ],
+    };
+    const decoded = decode(encode(data)) as any;
+    for (let i = 0; i < 5; i++) {
+      assert.equal(decoded.metrics[i].timestamp, data.metrics[i].timestamp);
+      assert.equal(decoded.metrics[i].cpu, data.metrics[i].cpu);
+    }
+  });
+});
+
+describe("sparse bundles", () => {
+  it("parses sparse prefix in fiber header", () => {
+    const fiber = parseFiber("~config{a, b, c}");
+    assert.equal(fiber.name, "config");
+    assert.equal(fiber.sparse, true);
+  });
+
+  it("decodes sparse records", () => {
+    const input = `~data{name, a, b, c, d, e, f, g, h}:
+name:Alice, a:1
+name:Bob, c:3
+name:Charlie`;
+    const result = decode(input) as any;
+    assert.equal(result.data[0].name, "Alice");
+    assert.equal(result.data[0].a, 1);
+    assert.equal(result.data[0].b, null);
+    assert.equal(result.data[1].name, "Bob");
+    assert.equal(result.data[1].c, 3);
+    assert.equal(result.data[2].name, "Charlie");
+  });
+
+  it("encodes sparse when most values are null", () => {
+    const fields = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const records = Array.from({ length: 4 }, (_, i) => {
+      const r: Record<string, any> = {};
+      for (const f of fields) r[f] = null;
+      r[fields[i % fields.length]] = i + 1;
+      return r;
+    });
+    const encoded = encode({ sparse_test: records });
+    assert.ok(encoded.includes("~"), "should use sparse prefix");
+    const decoded = decode(encoded) as any;
+    for (let i = 0; i < 4; i++) {
+      assert.equal(
+        decoded.sparse_test[i][fields[i % fields.length]],
+        i + 1,
+      );
+    }
+  });
+});
+
+describe("morphism fields", () => {
+  it("parses morphism modifier in fiber header", () => {
+    const fiber = parseFiber("orders{id, customer_id->customers}");
+    assert.equal(fiber.fields[1].name, "customer_id");
+    assert.deepEqual(fiber.fields[1].modifier, {
+      type: "morphism",
+      target: "customers",
+    });
+  });
+
+  it("decodes morphism fields as regular values", () => {
+    const input = `orders{id, customer_id->customers}:
+1, 42
+2, 43`;
+    const result = decode(input) as any;
+    assert.equal(result.orders[0].customer_id, 42);
+    assert.equal(result.orders[1].customer_id, 43);
+  });
+});

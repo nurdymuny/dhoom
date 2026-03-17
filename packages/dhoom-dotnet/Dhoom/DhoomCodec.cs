@@ -18,13 +18,13 @@ public class DhoomException : Exception
     }
 }
 
-public enum ModifierType { Arithmetic, Default, Nested }
+public enum ModifierType { Arithmetic, Default, Nested, Delta, Morphism }
 
-public record Modifier(ModifierType Type, JsonNode? Start = null, int? Step = null, JsonNode? DefaultValue = null);
+public record Modifier(ModifierType Type, JsonNode? Start = null, int? Step = null, JsonNode? DefaultValue = null, string? Target = null);
 
 public record FieldDecl(string Name, Modifier? Mod = null);
 
-public record Fiber(string? Name, List<FieldDecl> Fields);
+public record Fiber(string? Name, List<FieldDecl> Fields, bool Sparse = false);
 
 public static partial class DhoomCodec
 {
@@ -106,6 +106,15 @@ public static partial class DhoomCodec
     {
         token = token.Trim();
 
+        // Morphism: field->target (must check before nested '>')
+        var arrowIdx = token.IndexOf("->");
+        if (arrowIdx != -1)
+            return new(token[..arrowIdx], new Modifier(ModifierType.Morphism, Target: token[(arrowIdx + 2)..]));
+
+        // Delta: field^
+        if (token.EndsWith('^'))
+            return new(token[..^1], new Modifier(ModifierType.Delta));
+
         if (token.EndsWith('>'))
             return new(token[..^1], new Modifier(ModifierType.Nested));
 
@@ -144,6 +153,13 @@ public static partial class DhoomCodec
             throw new DhoomException("Missing braces in fiber header");
 
         var name = braceStart > 0 ? input[..braceStart].Trim() : null;
+        var sparse = false;
+        if (name != null && name.StartsWith('~'))
+        {
+            sparse = true;
+            name = name[1..];
+            if (string.IsNullOrEmpty(name)) name = null;
+        }
         var fieldsStr = input[(braceStart + 1)..braceEnd];
         var fields = fieldsStr.Split(',')
             .Select(s => s.Trim())
@@ -151,7 +167,7 @@ public static partial class DhoomCodec
             .Select(ParseFieldDecl)
             .ToList();
 
-        return new(string.IsNullOrEmpty(name) ? null : name, fields);
+        return new(string.IsNullOrEmpty(name) ? null : name, fields, sparse);
     }
 
     // -----------------------------------------------------------------------
@@ -222,6 +238,7 @@ public static partial class DhoomCodec
         var recFields = RecordFields(fiber);
         var records = new List<JsonNode?>();
         int ordinal = 0;
+        var deltaAccum = new Dictionary<string, double>();
 
         foreach (var line in body.Split('\n'))
         {
@@ -252,6 +269,28 @@ public static partial class DhoomCodec
                 }
                 else if (rf.Mod?.Type == ModifierType.Default)
                     obj[rf.Name] = rf.Mod.DefaultValue?.DeepClone();
+
+                // Delta accumulation
+                if (rf.Mod?.Type == ModifierType.Delta && obj[rf.Name] is JsonValue dv)
+                {
+                    double numVal = 0;
+                    if (dv.TryGetValue<long>(out var dl)) numVal = dl;
+                    else if (dv.TryGetValue<double>(out var dd)) numVal = dd;
+
+                    if (ordinal == 0)
+                    {
+                        deltaAccum[rf.Name] = numVal;
+                    }
+                    else
+                    {
+                        var accumulated = deltaAccum.GetValueOrDefault(rf.Name, 0) + numVal;
+                        deltaAccum[rf.Name] = accumulated;
+                        if (accumulated == Math.Truncate(accumulated))
+                            obj[rf.Name] = JsonValue.Create((long)accumulated);
+                        else
+                            obj[rf.Name] = JsonValue.Create(accumulated);
+                    }
+                }
             }
 
             records.Add(obj);
@@ -339,6 +378,53 @@ public static partial class DhoomCodec
         return records;
     }
 
+    private static List<JsonNode?> DecodeSparseRecords(string body, Fiber fiber)
+    {
+        var recFields = RecordFields(fiber);
+        var records = new List<JsonNode?>();
+        int ordinal = 0;
+
+        foreach (var line in body.Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0) continue;
+
+            var obj = new JsonObject();
+
+            // Arithmetic fields
+            foreach (var fd in fiber.Fields)
+            {
+                if (fd.Mod?.Type == ModifierType.Arithmetic)
+                    obj[fd.Name] = ArithmeticValue(fd.Mod.Start, GetStep(fd.Mod), ordinal);
+            }
+
+            // Defaults for missing fields
+            foreach (var rf in recFields)
+            {
+                if (rf.Mod?.Type == ModifierType.Default)
+                    obj[rf.Name] = rf.Mod.DefaultValue?.DeepClone();
+                else
+                    obj[rf.Name] = null;
+            }
+
+            // Parse name:value pairs
+            var pairs = SplitRecordFields(trimmed);
+            foreach (var pair in pairs)
+            {
+                var colonIdx = pair.IndexOf(':');
+                if (colonIdx == -1) continue;
+                var fieldName = pair[..colonIdx].Trim();
+                var fieldVal = pair[(colonIdx + 1)..].Trim();
+                obj[fieldName] = Coerce(fieldVal);
+            }
+
+            records.Add(obj);
+            ordinal++;
+        }
+
+        return records;
+    }
+
     private static (string? name, JsonNode? value) DecodeBundle(string input)
     {
         var headerEnd = FindHeaderEnd(input);
@@ -352,9 +438,13 @@ public static partial class DhoomCodec
         var recFields = RecordFields(fiber);
         var hasNested = recFields.Any(f => f.Mod?.Type == ModifierType.Nested);
 
-        var records = hasNested
-            ? DecodeNestedRecords(body, fiber)
-            : DecodeFlatRecords(body, fiber);
+        List<JsonNode?> records;
+        if (fiber.Sparse)
+            records = DecodeSparseRecords(body, fiber);
+        else if (hasNested)
+            records = DecodeNestedRecords(body, fiber);
+        else
+            records = DecodeFlatRecords(body, fiber);
 
         var arr = new JsonArray();
         foreach (var r in records) arr.Add(r);
@@ -455,6 +545,28 @@ public static partial class DhoomCodec
         return best;
     }
 
+    private static bool DetectDelta(List<JsonNode?> values)
+    {
+        if (values.Count < 3) return false;
+        var nums = new List<long>();
+        foreach (var v in values)
+        {
+            if (v is JsonValue jv)
+            {
+                if (jv.TryGetValue<bool>(out _)) return false;
+                if (jv.TryGetValue<long>(out var l)) { nums.Add(l); continue; }
+                if (jv.TryGetValue<double>(out var d) && d == Math.Truncate(d)) { nums.Add((long)d); continue; }
+            }
+            return false;
+        }
+        var deltas = new long[nums.Count];
+        deltas[0] = nums[0];
+        for (int i = 1; i < nums.Count; i++) deltas[i] = nums[i] - nums[i - 1];
+        var absLen = nums.Sum(n => n.ToString().Length);
+        var deltaLen = deltas.Sum(d => d.ToString().Length);
+        return deltaLen < absLen * 0.7;
+    }
+
     private static string EncodeBundle(string name, List<JsonObject> records, int indent)
     {
         var prefix = new string(' ', indent);
@@ -463,6 +575,7 @@ public static partial class DhoomCodec
         var keys = records[0].Select(kv => kv.Key).ToList();
         var orderedFields = new List<FieldDecl>();
         var arithmeticKeys = new HashSet<string>();
+        var deltaKeys = new HashSet<string>();
         var defaultKeys = new Dictionary<string, JsonNode?>();
         var nestedKeys = new HashSet<string>();
         var variableKeys = new List<string>();
@@ -487,6 +600,13 @@ public static partial class DhoomCodec
                 continue;
             }
 
+            // Delta
+            if (DetectDelta(values!))
+            {
+                deltaKeys.Add(key);
+                continue;
+            }
+
             // Modal default
             var (modalVal, modalCount) = FindModalDefault(values!);
             if (modalCount > records.Count / 2)
@@ -497,6 +617,31 @@ public static partial class DhoomCodec
 
             variableKeys.Add(key);
         }
+
+        // Ensure at least one field produces record body content
+        if (variableKeys.Count == 0 && deltaKeys.Count == 0 && nestedKeys.Count == 0)
+        {
+            foreach (var key in keys)
+            {
+                if (arithmeticKeys.Contains(key))
+                {
+                    arithmeticKeys.Remove(key);
+                    orderedFields.RemoveAll(f => f.Name == key);
+                    variableKeys.Add(key);
+                    break;
+                }
+                if (defaultKeys.ContainsKey(key))
+                {
+                    defaultKeys.Remove(key);
+                    variableKeys.Add(key);
+                    break;
+                }
+            }
+        }
+
+        // Delta fields
+        foreach (var key in keys.Where(k => deltaKeys.Contains(k)))
+            orderedFields.Add(new(key, new Modifier(ModifierType.Delta)));
 
         foreach (var key in variableKeys)
             orderedFields.Add(new(key));
@@ -514,7 +659,27 @@ public static partial class DhoomCodec
         foreach (var key in keys.Where(k => nestedKeys.Contains(k)))
             orderedFields.Add(new(key, new Modifier(ModifierType.Nested)));
 
+        // Check sparsity
+        var nonArithKeys = keys.Where(k => !arithmeticKeys.Contains(k) && !nestedKeys.Contains(k)).ToList();
+        var useSparse = false;
+        if (nonArithKeys.Count >= 8)
+        {
+            int nullCount = 0, totalCells = 0;
+            foreach (var r in records)
+            {
+                foreach (var k in nonArithKeys)
+                {
+                    totalCells++;
+                    var v = r[k];
+                    if (v is null) nullCount++;
+                    else if (v is JsonValue jv && jv.TryGetValue<string>(out var s) && s == "") nullCount++;
+                }
+            }
+            useSparse = nullCount > totalCells * 0.75;
+        }
+
         // Header
+        var sparsePrefix = useSparse ? "~" : "";
         var headerParts = orderedFields.Select(fd =>
         {
             var s = fd.Name;
@@ -532,15 +697,49 @@ public static partial class DhoomCodec
                     case ModifierType.Nested:
                         s += ">";
                         break;
+                    case ModifierType.Delta:
+                        s += "^";
+                        break;
+                    case ModifierType.Morphism:
+                        s += "->" + fd.Mod.Target;
+                        break;
                 }
             }
             return s;
         });
 
         var sb = new StringBuilder();
-        sb.Append($"{prefix}{name}{{{string.Join(", ", headerParts)}}}:\n");
+        sb.Append($"{prefix}{sparsePrefix}{name}{{{string.Join(", ", headerParts)}}}:\n");
 
         var recFields = orderedFields.Where(f => f.Mod?.Type != ModifierType.Arithmetic).ToList();
+
+        if (useSparse)
+        {
+            foreach (var record in records)
+            {
+                var pairs = new List<string>();
+                foreach (var rf in recFields)
+                {
+                    if (rf.Mod?.Type == ModifierType.Nested) continue;
+                    var val = record[rf.Name];
+                    if (val is not null)
+                    {
+                        if (val is JsonValue jv && jv.TryGetValue<string>(out var sv) && sv == "") continue;
+                        pairs.Add($"{rf.Name}:{ValueToDhoom(val)}");
+                    }
+                }
+                if (pairs.Count == 0)
+                {
+                    var first = recFields.FirstOrDefault(f => f.Mod?.Type != ModifierType.Nested);
+                    if (first != null) pairs.Add($"{first.Name}:null");
+                }
+                sb.Append(prefix + string.Join(", ", pairs) + "\n");
+            }
+            return sb.ToString();
+        }
+
+        int recordIdx = 0;
+        var prevDelta = new Dictionary<string, double>();
 
         foreach (var record in records)
         {
@@ -560,7 +759,32 @@ public static partial class DhoomCodec
                 }
 
                 var val = record[rf.Name];
-                if (rf.Mod?.Type == ModifierType.Default)
+
+                if (rf.Mod?.Type == ModifierType.Delta)
+                {
+                    double numVal = 0;
+                    if (val is JsonValue dv)
+                    {
+                        if (dv.TryGetValue<long>(out var dl)) numVal = dl;
+                        else if (dv.TryGetValue<double>(out var dd)) numVal = dd;
+                    }
+                    if (recordIdx == 0)
+                    {
+                        prevDelta[rf.Name] = numVal;
+                        values.Add(ValueToDhoom(val));
+                    }
+                    else
+                    {
+                        var prev = prevDelta.GetValueOrDefault(rf.Name, 0);
+                        var delta = numVal - prev;
+                        prevDelta[rf.Name] = numVal;
+                        if (delta == Math.Truncate(delta))
+                            values.Add(((long)delta).ToString());
+                        else
+                            values.Add(delta.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                }
+                else if (rf.Mod?.Type == ModifierType.Default)
                 {
                     if (JsonEqual(val, rf.Mod.DefaultValue))
                         values.Add("");
@@ -585,6 +809,8 @@ public static partial class DhoomCodec
             }
             else
                 sb.Append('\n');
+
+            recordIdx++;
         }
 
         return sb.ToString();

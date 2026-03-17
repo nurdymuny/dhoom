@@ -1,4 +1,4 @@
-# DHOOM Specification v0.3
+# DHOOM Specification v0.4
 
 **Davis Human-readable Optimized Object Markup**
 
@@ -83,6 +83,8 @@ A field may have exactly one modifier:
 | Arithmetic base | `field@start` or `field@start+step` | Value derived from position. Omitted from records. |
 | Modal default | `field\|value` | Default value. Omitted when matched; `:override` when not. |
 | Nested bundle | `field>` | Field contains a child bundle. |
+| Delta | `field^` | Values are delta-encoded. First record is absolute; subsequent are deltas. |
+| Morphism | `field->target` | Field values reference records in the named target bundle. |
 
 If a field has no modifier, it is a **variable field** — its value must appear in every record.
 
@@ -247,16 +249,19 @@ When converting from JSON, the encoder should use `T`/`F` for booleans and unquo
 
 ```ebnf
 document     = bundle
-bundle       = name? "{" fiber "}" ":" body
+bundle       = "~"? name? "{" fiber "}" ":" body
 fiber        = field ( "," field )*
 field        = identifier modifier?
 modifier     = "@" start ( "+" step )?
              | "|" default_value
              | ">"
+             | "^"
+             | "->" identifier
 body         = ε | record ( NEWLINE record )*
 record       = entry ( "," entry )*
 entry        = value
              | ":" value          ; deviation override (only inside record lines)
+             | identifier ":" value   ; sparse named field (only in ~ bundles)
              | bundle
 value        = quoted_string | literal
 quoted_string = '"' ([^"] | '""')* '"'
@@ -271,19 +276,22 @@ identifier   = [A-Za-z_][A-Za-z0-9_-]*
 
 1. Identify homogeneous arrays (arrays where all elements are objects with identical keys).
 2. For each homogeneous array, construct a fiber header from the keys.
-3. Analyze field values across all records to identify arithmetic sequences and modal defaults.
-4. Order the fiber: arithmetic fields first, then variable fields, then defaulted fields (sorted by default frequency descending), then nested fields.
-5. **Guard:** If every non-nested field would be classified as arithmetic or default (leaving no variable fields), demote the first field back to variable. This ensures every record has at least one explicit value in the body — otherwise trailing elision would produce empty lines indistinguishable from blank separators.
-6. For each record, emit only non-arithmetic, non-default values. Use `:` prefix for default overrides. Elide trailing defaults.
+3. Analyze field values across all records to identify arithmetic sequences, delta-compressible fields, and modal defaults.
+4. Order the fiber: arithmetic fields first, then variable and delta fields, then defaulted fields (sorted by default frequency descending), then nested fields.
+5. **Guard:** If every non-nested field would be classified as arithmetic or default (leaving no variable or delta fields), demote the first field back to variable. This ensures every record has at least one explicit value in the body — otherwise trailing elision would produce empty lines indistinguishable from blank separators.
+6. For each record, emit only non-arithmetic, non-default values. Use `:` prefix for default overrides. Elide trailing defaults. For delta fields, emit the absolute value in the first record and the difference from the previous record's value in subsequent records.
+7. If the bundle is sparse (>75% of non-arithmetic field values are null/empty and there are ≥8 fields), emit with `~` prefix and use named `field:value` pairs in records.
 
 ### 10.2 DHOOM → JSON (Decoding)
 
-1. Parse the fiber header to extract field names, arithmetic generators, and defaults.
-2. For each record, map positional values to non-arithmetic fields.
-3. Compute arithmetic field values from record ordinal.
-4. Fill trailing omitted fields with declared defaults.
-5. Interpret `:` prefixed values as default overrides.
-6. Assemble the complete JSON object.
+1. Parse the fiber header to extract field names, arithmetic generators, defaults, delta markers, and morphism references.
+2. Check for the `~` sparse bundle prefix.
+3. For each record, map positional values to non-arithmetic fields (or parse named `field:value` pairs in sparse mode).
+4. Compute arithmetic field values from record ordinal.
+5. For delta fields, accumulate: first record value is absolute; subsequent values are added to the previous record's accumulated value.
+6. Fill trailing omitted fields with declared defaults. In sparse mode, fill unlisted fields with `null` (or their default if declared).
+7. Interpret `:` prefixed values as default overrides.
+8. Assemble the complete JSON object.
 
 ### 10.3 Round-Trip Guarantee
 
@@ -298,6 +306,116 @@ For a collection of *N* records with *K* fields, of which *A* are arithmetic and
 **Optimal field ordering:** Place all *D* defaulted fields at trailing positions to maximize trailing elision.
 
 The format degrades gracefully: for fully heterogeneous data with no arithmetic indices and no repeated values, DHOOM is approximately the size of CSV-with-header (field names declared once, values listed positionally).
+
+## 12. Delta Fields (`^`)
+
+### 12.1 Declaration
+
+```
+temp^         →  values are delta-encoded (differences from previous record)
+```
+
+The `^` modifier marks a field as **delta-encoded**. The first record contains the absolute (base) value. Each subsequent record contains the difference from the previous record's value.
+
+### 12.2 Semantics
+
+For a delta field at record ordinal *i*:
+- *i* = 0: value is the **absolute** value.
+- *i* > 0: decoded value = previous decoded value + current delta.
+
+This models **parallel transport along the base space**: each section value is defined relative to its predecessor via a discrete connection.
+
+### 12.3 Example
+
+```
+metrics{ts@1000+60, temp^, pressure^}:
+22.4, 1013
+1, -2
+-3, 1
+```
+
+Decodes to:
+
+| ts | temp | pressure |
+|---|---|---|
+| 1000 | 22.4 | 1013 |
+| 1060 | 23.4 | 1011 |
+| 1120 | 20.4 | 1012 |
+
+### 12.4 Applicability
+
+- A conforming encoder should only emit `^` when all values are numeric (integer or float) and the total character count of deltas is at least 30% shorter than absolute values.
+- Delta fields appear in the record body (unlike arithmetic fields which are omitted).
+- A field may have at most one modifier; `^` is mutually exclusive with `@`, `|`, `>`, and `->`.
+
+## 13. Sparse Bundles (`~`)
+
+### 13.1 Declaration
+
+```
+~name{field1, field2, field3}:
+```
+
+The `~` prefix before the bundle name declares **sparse mode**. In sparse mode, records use **named** `field:value` pairs instead of positional values. Only non-null fields need to appear in each record.
+
+### 13.2 Record Format
+
+Each record line contains comma-separated `fieldname:value` pairs:
+
+```
+~config{id@1, host, port, timeout, retries, debug, verbose, log_level}:
+host:server-a, port:8080
+host:server-b, port:9090, debug:T
+host:server-c, log_level:warn
+```
+
+### 13.3 Missing Fields
+
+Fields not listed in a sparse record receive:
+- Their declared **default** value, if the field has a `|` modifier.
+- **`null`** otherwise.
+
+Arithmetic fields (`@`) still derive their values from ordinal position regardless of sparse mode.
+
+### 13.4 Applicability
+
+A conforming encoder should consider sparse mode when:
+- The bundle has **≥ 8** non-arithmetic fields.
+- More than **75%** of non-arithmetic field values across all records are `null` or empty string.
+
+Sparse mode and nested bundles (`>`) may be combined, but nested bundles are emitted inline after the sparse record line, following the same indentation rules as §6.
+
+## 14. Bundle Morphisms (`→`)
+
+### 14.1 Declaration
+
+```
+author->users      →  "author" field references records in the "users" bundle
+```
+
+The `->` modifier (ASCII representation of →) declares that a field's values reference records in another named bundle. This is a **schema annotation** — it documents the relationship but does not change encoding or decoding behavior.
+
+### 14.2 Example
+
+```
+users{id@1, name}:
+Alice
+Bob
+Carol
+
+posts{id@1, author->users, title, likes}:
+2, First Post, 42
+1, Hello World, 108
+3, DHOOM Guide, 256
+```
+
+Here `author->users` declares that the `author` field's values (2, 1, 3) are foreign keys referencing records in the `users` bundle.
+
+### 14.3 Semantics
+
+- The `->target` modifier is purely declarative. A conforming decoder treats the field value the same as a plain variable field.
+- Morphisms model **bundle morphisms** *(f, g): (E₁, B₁) → (E₂, B₂)* — structure-preserving maps between fiber bundles.
+- A field may have at most one modifier; `->` is mutually exclusive with `@`, `|`, `>`, and `^`.
 
 ## 12. Comparison to Prior Art
 

@@ -52,6 +52,10 @@ pub enum Modifier {
     Default(Value),
     /// Nested sub-bundle: `>`
     Nested,
+    /// Delta-encoded: `^`
+    Delta,
+    /// Morphism reference: `->target`
+    Morphism { target: String },
 }
 
 /// A single field declaration in the fiber.
@@ -66,6 +70,7 @@ pub struct FieldDecl {
 pub struct Fiber {
     pub name: Option<String>,
     pub fields: Vec<FieldDecl>,
+    pub sparse: bool,
 }
 
 impl Fiber {
@@ -202,10 +207,20 @@ pub fn parse_fiber(input: &str) -> Result<Fiber> {
         message: "Missing '}' in fiber header".into(),
     })?;
 
-    let name = if brace_start > 0 {
+    let raw_name = if brace_start > 0 {
         Some(input[..brace_start].trim().to_string())
     } else {
         None
+    };
+
+    let mut sparse = false;
+    let name = match raw_name {
+        Some(ref n) if n.starts_with('~') => {
+            sparse = true;
+            let stripped = n[1..].trim();
+            if stripped.is_empty() { None } else { Some(stripped.to_string()) }
+        }
+        other => other,
     };
 
     let fields_str = &input[brace_start + 1..brace_end];
@@ -219,10 +234,28 @@ pub fn parse_fiber(input: &str) -> Result<Fiber> {
         fields.push(parse_field_decl(token)?);
     }
 
-    Ok(Fiber { name, fields })
+    Ok(Fiber { name, fields, sparse })
 }
 
 fn parse_field_decl(token: &str) -> Result<FieldDecl> {
+    // Morphism: field->target (must check before nested >)
+    if let Some(arrow_pos) = token.find("->") {
+        let name = token[..arrow_pos].to_string();
+        let target = token[arrow_pos + 2..].to_string();
+        return Ok(FieldDecl {
+            name,
+            modifier: Some(Modifier::Morphism { target }),
+        });
+    }
+
+    // Delta: field^
+    if let Some(name) = token.strip_suffix('^') {
+        return Ok(FieldDecl {
+            name: name.to_string(),
+            modifier: Some(Modifier::Delta),
+        });
+    }
+
     // Nested: field>
     if let Some(name) = token.strip_suffix('>') {
         return Ok(FieldDecl {
@@ -343,7 +376,9 @@ fn decode_bundle(input: &str, line_offset: usize) -> Result<(Option<String>, Val
         .iter()
         .any(|f| matches!(f.modifier, Some(Modifier::Nested)));
 
-    let records = if has_nested {
+    let records = if fiber.sparse {
+        decode_sparse_records(body, &fiber, line_offset + 1)?
+    } else if has_nested {
         decode_nested_records(body, &fiber, line_offset + 1)?
     } else {
         decode_flat_records(body, &fiber, line_offset + 1)?
@@ -365,6 +400,7 @@ fn decode_flat_records(body: &str, fiber: &Fiber, _line_offset: usize) -> Result
     let record_fields = fiber.record_fields();
     let mut records = Vec::new();
     let mut record_ordinal = 0;
+    let mut delta_accum: HashMap<String, f64> = HashMap::new();
 
     for line in body.lines() {
         let trimmed = line.trim();
@@ -399,13 +435,33 @@ fn decode_flat_records(body: &str, fiber: &Fiber, _line_offset: usize) -> Result
                     // Deviation override
                     coerce(stripped)
                 } else if let Some(Modifier::Default(_)) = rf.modifier {
-                    // This shouldn't happen in well-formed DHOOM for default fields
-                    // unless trailing elision left them out. Treat as value.
                     coerce(raw)
                 } else {
                     coerce(raw)
                 };
-                obj.insert(rf.name.clone(), val);
+
+                // Delta accumulation
+                if matches!(rf.modifier, Some(Modifier::Delta)) {
+                    if let Some(num) = val.as_f64() {
+                        if record_ordinal == 0 {
+                            delta_accum.insert(rf.name.clone(), num);
+                            obj.insert(rf.name.clone(), val);
+                        } else {
+                            let prev = *delta_accum.get(&rf.name).unwrap_or(&0.0);
+                            let absolute = prev + num;
+                            delta_accum.insert(rf.name.clone(), absolute);
+                            if absolute == absolute.trunc() {
+                                obj.insert(rf.name.clone(), Value::Number(Number::from(absolute as i64)));
+                            } else {
+                                obj.insert(rf.name.clone(), Number::from_f64(absolute).map(Value::Number).unwrap_or(Value::Null));
+                            }
+                        }
+                    } else {
+                        obj.insert(rf.name.clone(), val);
+                    }
+                } else {
+                    obj.insert(rf.name.clone(), val);
+                }
             } else {
                 // Trailing elision — fill with default
                 if let Some(Modifier::Default(ref d)) = rf.modifier {
@@ -419,6 +475,54 @@ fn decode_flat_records(body: &str, fiber: &Fiber, _line_offset: usize) -> Result
         for rf in record_fields.iter().skip(field_idx) {
             if let Some(Modifier::Default(ref d)) = rf.modifier {
                 obj.insert(rf.name.clone(), d.clone());
+            }
+        }
+
+        records.push(Value::Object(obj));
+        record_ordinal += 1;
+    }
+
+    Ok(records)
+}
+
+fn decode_sparse_records(body: &str, fiber: &Fiber, _line_offset: usize) -> Result<Vec<Value>> {
+    let mut records = Vec::new();
+    let mut record_ordinal = 0;
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let mut obj = Map::new();
+
+        // Fill arithmetic fields
+        for fdecl in &fiber.fields {
+            if let Some(Modifier::Arithmetic { ref start, ref step }) = fdecl.modifier {
+                let s = step.unwrap_or(1);
+                obj.insert(fdecl.name.clone(), arithmetic_value(start, s, record_ordinal));
+            }
+        }
+
+        // Parse name:value pairs
+        let pairs = split_record_fields(trimmed);
+        for pair in &pairs {
+            if let Some(colon_pos) = pair.find(':') {
+                let field_name = pair[..colon_pos].trim();
+                let raw_value = pair[colon_pos + 1..].trim();
+                obj.insert(field_name.to_string(), coerce(raw_value));
+            }
+        }
+
+        // Fill defaults for missing fields
+        for fdecl in &fiber.fields {
+            if !obj.contains_key(&fdecl.name) {
+                if let Some(Modifier::Default(ref d)) = fdecl.modifier {
+                    obj.insert(fdecl.name.clone(), d.clone());
+                } else if !matches!(fdecl.modifier, Some(Modifier::Arithmetic { .. })) {
+                    obj.insert(fdecl.name.clone(), Value::Null);
+                }
             }
         }
 
@@ -575,15 +679,14 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         return Ok(());
     }
 
-    // Collect all keys from the first record (assume homogeneous)
     let first = records[0]
         .as_object()
         .ok_or_else(|| DhoomError::Encode("Array elements must be objects".into()))?;
     let keys: Vec<String> = first.keys().cloned().collect();
 
-    // Analyze each field across all records
     let mut field_decls: Vec<FieldDecl> = Vec::new();
     let mut arithmetic_fields: Vec<String> = Vec::new();
+    let mut delta_fields: Vec<String> = Vec::new();
     let mut default_fields: Vec<(String, Value)> = Vec::new();
     let mut variable_fields: Vec<String> = Vec::new();
     let mut nested_fields: Vec<String> = Vec::new();
@@ -594,13 +697,11 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
             .filter_map(|r| r.as_object().and_then(|o| o.get(key)))
             .collect();
 
-        // Check if nested (arrays of objects)
         if values.iter().all(|v| v.is_array()) {
             nested_fields.push(key.clone());
             continue;
         }
 
-        // Check arithmetic sequence
         if let Some((start, step)) = detect_arithmetic(&values) {
             arithmetic_fields.push(key.clone());
             let step_val = if step == 1 { None } else { Some(step) };
@@ -614,7 +715,11 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
             continue;
         }
 
-        // Check modal default (most common value)
+        if detect_delta(&values) {
+            delta_fields.push(key.clone());
+            continue;
+        }
+
         if let Some((default_val, match_count)) = find_modal_default(&values) {
             if match_count > records.len() / 2 {
                 default_fields.push((key.clone(), default_val));
@@ -625,17 +730,21 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         variable_fields.push(key.clone());
     }
 
-    // Build fiber: arithmetic first, then variable, then defaults (for trailing elision), then nested
     let mut ordered_fields: Vec<FieldDecl> = Vec::new();
 
-    // Arithmetic fields (already in field_decls)
     for fd in &field_decls {
         if matches!(fd.modifier, Some(Modifier::Arithmetic { .. })) {
             ordered_fields.push(fd.clone());
         }
     }
 
-    // Variable fields
+    for key in &delta_fields {
+        ordered_fields.push(FieldDecl {
+            name: key.clone(),
+            modifier: Some(Modifier::Delta),
+        });
+    }
+
     for key in &variable_fields {
         ordered_fields.push(FieldDecl {
             name: key.clone(),
@@ -643,7 +752,6 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         });
     }
 
-    // Default fields (order by match frequency desc for maximum trailing elision)
     let mut default_with_freq: Vec<(String, Value, usize)> = default_fields
         .into_iter()
         .map(|(key, dval)| {
@@ -663,7 +771,6 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         });
     }
 
-    // Nested fields
     for key in &nested_fields {
         ordered_fields.push(FieldDecl {
             name: key.clone(),
@@ -671,9 +778,35 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         });
     }
 
-    // Emit header
+    // Check sparsity
+    let non_arith_keys: Vec<&String> = keys.iter()
+        .filter(|k| !arithmetic_fields.contains(k) && !nested_fields.contains(k))
+        .collect();
+    let use_sparse = if non_arith_keys.len() >= 8 {
+        let mut null_count = 0usize;
+        let total_cells = records.len() * non_arith_keys.len();
+        for r in records {
+            if let Some(obj) = r.as_object() {
+                for k in &non_arith_keys {
+                    match obj.get(*k) {
+                        None | Some(Value::Null) => null_count += 1,
+                        Some(Value::String(s)) if s.is_empty() => null_count += 1,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        null_count > total_cells * 3 / 4
+    } else {
+        false
+    };
+
     let prefix = " ".repeat(indent);
-    let _ = write!(out, "{}{}", prefix, name);
+    if use_sparse {
+        let _ = write!(out, "{}~{}", prefix, name);
+    } else {
+        let _ = write!(out, "{}{}", prefix, name);
+    }
     out.push('{');
     for (i, fd) in ordered_fields.iter().enumerate() {
         if i > 0 {
@@ -695,16 +828,51 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
             Some(Modifier::Nested) => {
                 out.push('>');
             }
+            Some(Modifier::Delta) => {
+                out.push('^');
+            }
+            Some(Modifier::Morphism { target }) => {
+                out.push_str("->");
+                out.push_str(target);
+            }
             None => {}
         }
     }
     out.push_str("}:\n");
 
-    // Emit records
     let rec_fields: Vec<&FieldDecl> = ordered_fields
         .iter()
         .filter(|f| !matches!(f.modifier, Some(Modifier::Arithmetic { .. })))
         .collect();
+
+    if use_sparse {
+        for record in records {
+            let obj = record
+                .as_object()
+                .ok_or_else(|| DhoomError::Encode("Record must be an object".into()))?;
+            let mut pairs: Vec<String> = Vec::new();
+            for rf in &rec_fields {
+                if matches!(rf.modifier, Some(Modifier::Nested)) { continue; }
+                if let Some(v) = obj.get(&rf.name) {
+                    match v {
+                        Value::Null => {}
+                        Value::String(s) if s.is_empty() => {}
+                        _ => pairs.push(format!("{}:{}", rf.name, value_to_dhoom(v))),
+                    }
+                }
+            }
+            if pairs.is_empty() {
+                if let Some(rf) = rec_fields.first() {
+                    pairs.push(format!("{}:null", rf.name));
+                }
+            }
+            let _ = writeln!(out, "{}{}", prefix, pairs.join(", "));
+        }
+        return Ok(());
+    }
+
+    let mut record_idx = 0usize;
+    let mut prev_delta: HashMap<String, f64> = HashMap::new();
 
     for record in records {
         let obj = record
@@ -723,23 +891,41 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
             }
 
             let val = obj.get(&rf.name);
-            match (&rf.modifier, val) {
-                (Some(Modifier::Default(d)), Some(v)) if v == d => {
-                    values.push(String::new()); // matches default — elide
+
+            if matches!(rf.modifier, Some(Modifier::Delta)) {
+                let num_val = val.and_then(|v| v.as_f64()).unwrap_or(0.0);
+                if record_idx == 0 {
+                    prev_delta.insert(rf.name.clone(), num_val);
+                    values.push(val.map(|v| value_to_dhoom(v)).unwrap_or_default());
+                } else {
+                    let prev = *prev_delta.get(&rf.name).unwrap_or(&0.0);
+                    let delta = num_val - prev;
+                    prev_delta.insert(rf.name.clone(), num_val);
+                    let delta_i = delta as i64;
+                    if (delta_i as f64 - delta).abs() < 1e-9 {
+                        values.push(delta_i.to_string());
+                    } else {
+                        values.push(format!("{}", delta));
+                    }
                 }
-                (Some(Modifier::Default(_)), Some(v)) => {
-                    values.push(format!(":{}", value_to_dhoom(v))); // deviation
-                }
-                (_, Some(v)) => {
-                    values.push(value_to_dhoom(v));
-                }
-                (_, None) => {
-                    values.push(String::new());
+            } else {
+                match (&rf.modifier, val) {
+                    (Some(Modifier::Default(d)), Some(v)) if v == d => {
+                        values.push(String::new());
+                    }
+                    (Some(Modifier::Default(_)), Some(v)) => {
+                        values.push(format!(":{}", value_to_dhoom(v)));
+                    }
+                    (_, Some(v)) => {
+                        values.push(value_to_dhoom(v));
+                    }
+                    (_, None) => {
+                        values.push(String::new());
+                    }
                 }
             }
         }
 
-        // Trailing elision: remove trailing empty values
         while values.last().map_or(false, |v| v.is_empty()) {
             values.pop();
         }
@@ -756,9 +942,28 @@ fn encode_bundle(name: &str, records: &[Value], out: &mut String, indent: usize)
         } else {
             out.push('\n');
         }
+        record_idx += 1;
     }
 
     Ok(())
+}
+
+/// Detect if delta encoding would be beneficial for a sequence of values.
+fn detect_delta(values: &[&Value]) -> bool {
+    if values.len() < 3 {
+        return false;
+    }
+    let nums: Option<Vec<i64>> = values.iter().map(|v| v.as_i64()).collect();
+    let nums = match nums {
+        Some(n) => n,
+        None => return false,
+    };
+    let deltas: Vec<i64> = std::iter::once(nums[0])
+        .chain(nums.windows(2).map(|w| w[1] - w[0]))
+        .collect();
+    let abs_len: usize = nums.iter().map(|n| n.to_string().len()).sum();
+    let delta_len: usize = deltas.iter().map(|d| d.to_string().len()).sum();
+    delta_len * 10 < abs_len * 7
 }
 
 /// Detect if a sequence of values forms an arithmetic progression.
@@ -1022,5 +1227,131 @@ readings{sensor_id@T-001, timestamp@1710000000+60, value, status|normal, unit|ce
         let (modal, count) = find_modal_default(&refs).unwrap();
         assert_eq!(modal, json!(5));
         assert_eq!(count, 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Delta fields
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_delta_modifier() {
+        let fd = parse_field_decl("ts^").unwrap();
+        assert_eq!(fd.name, "ts");
+        assert_eq!(fd.modifier, Some(Modifier::Delta));
+    }
+
+    #[test]
+    fn test_decode_delta_values() {
+        let input = "events{name, ts^}:\nA, 1000000\nB, 50\nC, 70\n";
+        let result = decode(input).unwrap();
+        let expected = json!({
+            "events": [
+                {"name": "A", "ts": 1000000},
+                {"name": "B", "ts": 1000050},
+                {"name": "C", "ts": 1000120}
+            ]
+        });
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_encode_delta_when_beneficial() {
+        let data = json!({
+            "events": [
+                {"name": "A", "ts": 1000000},
+                {"name": "B", "ts": 1000050},
+                {"name": "C", "ts": 1000120},
+                {"name": "D", "ts": 1000200},
+                {"name": "E", "ts": 1000310}
+            ]
+        });
+        let dhoom = encode(&data).unwrap();
+        assert!(dhoom.contains("ts^"), "Should use delta modifier");
+    }
+
+    #[test]
+    fn test_roundtrip_delta() {
+        let data = json!({
+            "events": [
+                {"name": "s0", "ts": 1000000},
+                {"name": "s1", "ts": 1000050},
+                {"name": "s2", "ts": 1000120},
+                {"name": "s3", "ts": 1000200},
+                {"name": "s4", "ts": 1000310}
+            ]
+        });
+        let dhoom = encode(&data).unwrap();
+        let roundtrip = decode(&dhoom).unwrap();
+        assert_eq!(data, roundtrip);
+    }
+
+    // -----------------------------------------------------------------------
+    // Sparse bundles
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_sparse_prefix() {
+        let fiber = parse_fiber("~profiles{a, b, c, d, e, f, g, h}").unwrap();
+        assert_eq!(fiber.name, Some("profiles".into()));
+        assert!(fiber.sparse);
+        assert_eq!(fiber.fields.len(), 8);
+    }
+
+    #[test]
+    fn test_decode_sparse_records() {
+        let input = "~items{a, b, c, d, e, f, g, h}:\na:1, c:3\nb:2\n";
+        let result = decode(input).unwrap();
+        let arr = result["items"].as_array().unwrap();
+        assert_eq!(arr[0]["a"], json!(1));
+        assert_eq!(arr[0]["c"], json!(3));
+        assert_eq!(arr[0]["b"], Value::Null);
+        assert_eq!(arr[1]["b"], json!(2));
+        assert_eq!(arr[1]["a"], Value::Null);
+    }
+
+    #[test]
+    fn test_encode_sparse_when_mostly_null() {
+        let mut records = Vec::new();
+        let field_names: Vec<&str> = vec!["a","b","c","d","e","f","g","h","i","j"];
+        for i in 0..5 {
+            let mut obj = serde_json::Map::new();
+            for name in &field_names {
+                obj.insert(name.to_string(), Value::Null);
+            }
+            // Set just one field per record
+            let key = field_names[i % field_names.len()];
+            obj.insert(key.to_string(), json!(i + 1));
+            records.push(Value::Object(obj));
+        }
+        let data = json!({"sparse_data": records});
+        let dhoom = encode(&data).unwrap();
+        assert!(dhoom.contains("~sparse_data"), "Should use sparse prefix");
+    }
+
+    // -----------------------------------------------------------------------
+    // Morphism fields
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_morphism_modifier() {
+        let fd = parse_field_decl("user_id->users").unwrap();
+        assert_eq!(fd.name, "user_id");
+        assert_eq!(
+            fd.modifier,
+            Some(Modifier::Morphism { target: "users".into() })
+        );
+    }
+
+    #[test]
+    fn test_decode_morphism_as_regular_values() {
+        let input = "orders{id@1, user_id->users}:\nAlice\nBob\n";
+        let result = decode(input).unwrap();
+        let expected = json!({
+            "orders": [
+                {"id": 1, "user_id": "Alice"},
+                {"id": 2, "user_id": "Bob"}
+            ]
+        });
+        assert_eq!(result, expected);
     }
 }

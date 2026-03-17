@@ -29,10 +29,11 @@ class DhoomError(Exception):
 
 @dataclass
 class Modifier:
-    type: str  # "arithmetic" | "default" | "nested"
+    type: str  # "arithmetic" | "default" | "nested" | "delta" | "morphism"
     start: JsonValue = None
     step: int | None = None
     default_value: JsonValue = None
+    target: str | None = None
 
 
 @dataclass
@@ -45,6 +46,7 @@ class FieldDecl:
 class Fiber:
     name: str | None = None
     fields: list[FieldDecl] = field(default_factory=list)
+    sparse: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +116,17 @@ def _arithmetic_value(start: JsonValue, step: int, i: int) -> JsonValue:
 # ---------------------------------------------------------------------------
 
 def _parse_field_decl(token: str) -> FieldDecl:
+    # Morphism: field->target (must check before nested >)
+    arrow_idx = token.find("->")
+    if arrow_idx != -1:
+        name = token[:arrow_idx]
+        target = token[arrow_idx + 2:]
+        return FieldDecl(name=name, modifier=Modifier(type="morphism", target=target))
+
+    # Delta: field^
+    if token.endswith("^"):
+        return FieldDecl(name=token[:-1], modifier=Modifier(type="delta"))
+
     # Nested: field>
     if token.endswith(">"):
         return FieldDecl(name=token[:-1], modifier=Modifier(type="nested"))
@@ -147,14 +160,24 @@ def parse_fiber(input_str: str) -> Fiber:
     if brace_start == -1 or brace_end == -1:
         raise DhoomError("Missing braces in fiber header")
 
-    name = s[:brace_start].strip() or None
-    fields_str = s[brace_start + 1:brace_end]
+    raw_name = s[:brace_start].strip() or None
+    sparse = False
+    name = None
+
+    if raw_name:
+        if raw_name.startswith("~"):
+            sparse = True
+            stripped = raw_name[1:].strip()
+            name = stripped or None
+        else:
+            name = raw_name
+
     fields = [
         _parse_field_decl(t.strip())
-        for t in fields_str.split(",")
+        for t in s[brace_start + 1:brace_end].split(",")
         if t.strip()
     ]
-    return Fiber(name=name, fields=fields)
+    return Fiber(name=name, fields=fields, sparse=sparse)
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +234,7 @@ def _decode_flat_records(body: str, fiber: Fiber) -> list[JsonValue]:
     rec_fields = _record_fields(fiber)
     records: list[JsonValue] = []
     ordinal = 0
+    delta_accum: dict[str, float] = {}
 
     for line in body.split("\n"):
         trimmed = line.strip()
@@ -230,15 +254,66 @@ def _decode_flat_records(body: str, fiber: Fiber) -> list[JsonValue]:
             if j < len(raw):
                 val = raw[j]
                 if val == "":
-                    obj[rf.name] = rf.modifier.default_value if rf.modifier and rf.modifier.type == "default" else ""
+                    resolved = rf.modifier.default_value if rf.modifier and rf.modifier.type == "default" else ""
                 elif val.startswith(":"):
-                    obj[rf.name] = coerce(val[1:])
+                    resolved = coerce(val[1:])
                 else:
-                    obj[rf.name] = coerce(val)
+                    resolved = coerce(val)
+
+                # Delta accumulation
+                if rf.modifier and rf.modifier.type == "delta" and isinstance(resolved, (int, float)) and not isinstance(resolved, bool):
+                    if ordinal == 0:
+                        delta_accum[rf.name] = resolved
+                    else:
+                        prev = delta_accum.get(rf.name, 0)
+                        resolved = prev + resolved
+                        delta_accum[rf.name] = resolved
+
+                obj[rf.name] = resolved
             else:
                 # Trailing elision
                 if rf.modifier and rf.modifier.type == "default":
                     obj[rf.name] = rf.modifier.default_value
+
+        records.append(obj)
+        ordinal += 1
+
+    return records
+
+
+def _decode_sparse_records(body: str, fiber: Fiber) -> list[JsonValue]:
+    records: list[JsonValue] = []
+    ordinal = 0
+
+    for line in body.split("\n"):
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+
+        obj: dict[str, JsonValue] = {}
+
+        # Arithmetic fields
+        for fd in fiber.fields:
+            if fd.modifier and fd.modifier.type == "arithmetic":
+                obj[fd.name] = _arithmetic_value(fd.modifier.start, fd.modifier.step or 1, ordinal)
+
+        # Parse name:value pairs
+        pairs = _split_record_fields(trimmed)
+        for pair in pairs:
+            colon_idx = pair.find(":")
+            if colon_idx == -1:
+                continue
+            field_name = pair[:colon_idx].strip()
+            raw_value = pair[colon_idx + 1:].strip()
+            obj[field_name] = coerce(raw_value)
+
+        # Fill defaults for missing fields
+        for fd in fiber.fields:
+            if fd.name not in obj:
+                if fd.modifier and fd.modifier.type == "default":
+                    obj[fd.name] = fd.modifier.default_value
+                elif not (fd.modifier and fd.modifier.type == "arithmetic"):
+                    obj[fd.name] = None
 
         records.append(obj)
         ordinal += 1
@@ -325,7 +400,12 @@ def _decode_bundle(input_str: str) -> dict:
     rec_fields = _record_fields(fiber)
     has_nested = any(f.modifier and f.modifier.type == "nested" for f in rec_fields)
 
-    records = _decode_nested_records(body, fiber) if has_nested else _decode_flat_records(body, fiber)
+    if fiber.sparse:
+        records = _decode_sparse_records(body, fiber)
+    elif has_nested:
+        records = _decode_nested_records(body, fiber)
+    else:
+        records = _decode_flat_records(body, fiber)
     return {"name": fiber.name, "value": records}
 
 
@@ -385,6 +465,18 @@ def _json_equal(a: JsonValue, b: JsonValue) -> bool:
     return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
 
 
+def _detect_delta(values: list[JsonValue]) -> bool:
+    if len(values) < 3:
+        return False
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+        return False
+    nums = values
+    deltas = [nums[0]] + [nums[i] - nums[i - 1] for i in range(1, len(nums))]
+    abs_len = sum(len(str(v)) for v in nums)
+    delta_len = sum(len(str(d)) for d in deltas)
+    return delta_len < abs_len * 0.7
+
+
 def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
     prefix = " " * indent
 
@@ -394,6 +486,7 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
     keys = list(records[0].keys())
     ordered_fields: list[FieldDecl] = []
     arithmetic_keys: set[str] = set()
+    delta_keys: set[str] = set()
     default_keys: dict[str, JsonValue] = {}
     nested_keys: set[str] = set()
     variable_keys: list[str] = []
@@ -417,6 +510,11 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
             ))
             continue
 
+        # Check delta
+        if _detect_delta(values):
+            delta_keys.add(key)
+            continue
+
         # Check modal default
         modal = _find_modal_default(values)
         if modal and modal["count"] > len(records) / 2:
@@ -424,6 +522,23 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
             continue
 
         variable_keys.append(key)
+
+    # Ensure at least one field produces record body content
+    if not variable_keys and not delta_keys and not nested_keys:
+        for key in keys:
+            if key in arithmetic_keys:
+                arithmetic_keys.discard(key)
+                ordered_fields = [f for f in ordered_fields if f.name != key]
+                variable_keys.append(key)
+                break
+            if key in default_keys:
+                del default_keys[key]
+                variable_keys.append(key)
+                break
+
+    # Delta fields
+    for key in delta_keys:
+        ordered_fields.append(FieldDecl(name=key, modifier=Modifier(type="delta")))
 
     # Variable fields
     for key in variable_keys:
@@ -442,7 +557,22 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
     for key in nested_keys:
         ordered_fields.append(FieldDecl(name=key, modifier=Modifier(type="nested")))
 
+    # Check sparsity — use sparse mode when ≥8 non-arithmetic fields and >75% null/empty
+    non_arith_keys = [k for k in keys if k not in arithmetic_keys and k not in nested_keys]
+    use_sparse = False
+    if len(non_arith_keys) >= 8:
+        null_count = 0
+        total_cells = 0
+        for r in records:
+            for k in non_arith_keys:
+                total_cells += 1
+                v = r.get(k)
+                if v is None or v == "":
+                    null_count += 1
+        use_sparse = null_count > total_cells * 0.75
+
     # Emit header
+    sparse_prefix = "~" if use_sparse else ""
     parts = []
     for fd in ordered_fields:
         s = fd.name
@@ -455,12 +585,35 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                 s += f"|{value_to_dhoom(fd.modifier.default_value)}"
             elif fd.modifier.type == "nested":
                 s += ">"
+            elif fd.modifier.type == "delta":
+                s += "^"
+            elif fd.modifier.type == "morphism":
+                s += f"->{fd.modifier.target}"
         parts.append(s)
 
-    out = f"{prefix}{name}{{{', '.join(parts)}}}:\n"
+    out = f"{prefix}{sparse_prefix}{name}{{{', '.join(parts)}}}:\n"
 
     # Emit records
     rec_fields = [f for f in ordered_fields if not (f.modifier and f.modifier.type == "arithmetic")]
+
+    if use_sparse:
+        for record in records:
+            pairs: list[str] = []
+            for rf in rec_fields:
+                if rf.modifier and rf.modifier.type == "nested":
+                    continue
+                val = record.get(rf.name)
+                if val is not None and val != "":
+                    pairs.append(f"{rf.name}:{value_to_dhoom(val)}")
+            if not pairs:
+                first_field = next((f for f in rec_fields if not (f.modifier and f.modifier.type == "nested")), None)
+                if first_field:
+                    pairs.append(f"{first_field.name}:null")
+            out += f"{prefix}{', '.join(pairs)}\n"
+        return out
+
+    record_idx = 0
+    prev_delta: dict[str, int | float] = {}
 
     for record in records:
         values: list[str] = []
@@ -474,7 +627,18 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                 continue
 
             val = record[rf.name]
-            if rf.modifier and rf.modifier.type == "default":
+
+            if rf.modifier and rf.modifier.type == "delta":
+                num_val = val if isinstance(val, (int, float)) and not isinstance(val, bool) else 0
+                if record_idx == 0:
+                    prev_delta[rf.name] = num_val
+                    values.append(value_to_dhoom(num_val))
+                else:
+                    prev = prev_delta.get(rf.name, 0)
+                    delta = num_val - prev
+                    prev_delta[rf.name] = num_val
+                    values.append(value_to_dhoom(delta))
+            elif rf.modifier and rf.modifier.type == "default":
                 if _json_equal(val, rf.modifier.default_value):
                     values.append("")
                 else:
@@ -494,6 +658,8 @@ def _encode_bundle(name: str, records: list[dict], indent: int) -> str:
                 out += _encode_bundle(nb_name, nb_records, indent + 2)
         else:
             out += "\n"
+
+        record_idx += 1
 
     return out
 

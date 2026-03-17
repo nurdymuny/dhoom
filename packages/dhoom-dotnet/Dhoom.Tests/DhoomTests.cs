@@ -319,3 +319,116 @@ public class CompressionTests
         Assert.True(dhoom.Length < jsonStr.Length, $"DHOOM ({dhoom.Length}) should be smaller than JSON ({jsonStr.Length})");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Delta fields
+// ---------------------------------------------------------------------------
+
+public class DeltaTests
+{
+    [Fact]
+    public void ParseDeltaModifier()
+    {
+        var fiber = DhoomCodec.ParseFiber("events{ts^, name}");
+        Assert.Equal(ModifierType.Delta, fiber.Fields[0].Mod?.Type);
+    }
+
+    [Fact]
+    public void DecodeDeltaValues()
+    {
+        var input = "events{name, ts^}:\nA, 1000000\nB, 50\nC, 70\n";
+        var result = DhoomCodec.Decode(input);
+        Assert.Equal(1000000, result!["events"]![0]!["ts"]!.GetValue<long>());
+        Assert.Equal(1000050, result!["events"]![1]!["ts"]!.GetValue<long>());
+        Assert.Equal(1000120, result!["events"]![2]!["ts"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public void EncodeDeltaWhenBeneficial()
+    {
+        var json = """{"events":[{"name":"A","ts":1000000},{"name":"B","ts":1000050},{"name":"C","ts":1000120},{"name":"D","ts":1000200},{"name":"E","ts":1000310}]}""";
+        var data = JsonNode.Parse(json);
+        var dhoom = DhoomCodec.Encode(data);
+        Assert.Contains("ts^", dhoom);
+    }
+
+    [Fact]
+    public void RoundtripDelta()
+    {
+        var json = """{"events":[{"name":"s0","ts":1000000},{"name":"s1","ts":1000050},{"name":"s2","ts":1000120},{"name":"s3","ts":1000200},{"name":"s4","ts":1000310}]}""";
+        var data = JsonNode.Parse(json);
+        var dhoom = DhoomCodec.Encode(data);
+        var roundtrip = DhoomCodec.Decode(dhoom);
+        JsonAssert.Equal(data, roundtrip);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sparse bundles
+// ---------------------------------------------------------------------------
+
+public class SparseTests
+{
+    [Fact]
+    public void ParseSparsePrefix()
+    {
+        var fiber = DhoomCodec.ParseFiber("~profiles{a, b, c, d, e, f, g, h}");
+        Assert.Equal("profiles", fiber.Name);
+        Assert.True(fiber.Sparse);
+        Assert.Equal(8, fiber.Fields.Count);
+    }
+
+    [Fact]
+    public void DecodeSparseRecords()
+    {
+        var input = "~items{a, b, c, d, e, f, g, h}:\na:1, c:3\nb:2\n";
+        var result = DhoomCodec.Decode(input);
+        var arr = result!["items"]!.AsArray();
+        Assert.Equal(1L, arr[0]!["a"]!.GetValue<long>());
+        Assert.Equal(3L, arr[0]!["c"]!.GetValue<long>());
+        var bVal = arr[0]!["b"];
+        Assert.True(bVal is null || bVal.ToJsonString() == "null");
+        Assert.Equal(2L, arr[1]!["b"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public void EncodeSparseWhenMostlyNull()
+    {
+        var fields = new[] { "a","b","c","d","e","f","g","h","i","j" };
+        var arr = new JsonArray();
+        for (int i = 0; i < 5; i++)
+        {
+            var obj = new JsonObject();
+            foreach (var f in fields) obj[f] = null;
+            obj[fields[i % fields.Length]] = i + 1;
+            arr.Add(obj);
+        }
+        var data = new JsonObject { ["sparse_data"] = arr };
+        var dhoom = DhoomCodec.Encode(data);
+        Assert.Contains("~sparse_data", dhoom);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Morphism fields
+// ---------------------------------------------------------------------------
+
+public class MorphismTests
+{
+    [Fact]
+    public void ParseMorphismModifier()
+    {
+        var fiber = DhoomCodec.ParseFiber("orders{id@1, user_id->users}");
+        Assert.Equal(ModifierType.Morphism, fiber.Fields[1].Mod?.Type);
+        Assert.Equal("users", fiber.Fields[1].Mod?.Target);
+    }
+
+    [Fact]
+    public void DecodeMorphismAsRegularValues()
+    {
+        var input = "orders{id@1, user_id->users}:\nAlice\nBob\n";
+        var result = DhoomCodec.Decode(input);
+        Assert.Equal("Alice", result!["orders"]![0]!["user_id"]!.GetValue<string>());
+        Assert.Equal("Bob", result!["orders"]![1]!["user_id"]!.GetValue<string>());
+    }
+}

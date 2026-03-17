@@ -318,6 +318,86 @@ public class DhoomTests {
             roundtrip(json);
         });
 
+        // --- Delta Field Tests ---
+        System.out.println("\nDelta Field Tests:");
+
+        test("Parse delta modifier", () -> {
+            var fiber = DhoomCodec.parseFiber("events{ts^, name}");
+            assertEqual("delta", fiber.fields().get(0).modifier().type());
+        });
+
+        test("Decode delta values", () -> {
+            var input = "events{name, ts^}:\nA, 1000000\nB, 50\nC, 70\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("events").asArray();
+            assertEqual(1000000L, arr.get(0).asObject().get("ts").asLong());
+            assertEqual(1000050L, arr.get(1).asObject().get("ts").asLong());
+            assertEqual(1000120L, arr.get(2).asObject().get("ts").asLong());
+        });
+
+        test("Encode delta when beneficial", () -> {
+            var json = "{\"events\":[{\"name\":\"A\",\"ts\":1000000},{\"name\":\"B\",\"ts\":1000050},{\"name\":\"C\",\"ts\":1000120},{\"name\":\"D\",\"ts\":1000200},{\"name\":\"E\",\"ts\":1000310}]}";
+            var dhoom = DhoomCodec.encode(JsonValue.parse(json));
+            assertContains(dhoom, "ts^");
+        });
+
+        test("Roundtrip delta", () -> {
+            roundtrip("{\"events\":[{\"name\":\"s0\",\"ts\":1000000},{\"name\":\"s1\",\"ts\":1000050},{\"name\":\"s2\",\"ts\":1000120},{\"name\":\"s3\",\"ts\":1000200},{\"name\":\"s4\",\"ts\":1000310}]}");
+        });
+
+        // --- Sparse Bundle Tests ---
+        System.out.println("\nSparse Bundle Tests:");
+
+        test("Parse sparse prefix", () -> {
+            var fiber = DhoomCodec.parseFiber("~profiles{a, b, c, d, e, f, g, h}");
+            assertEqual("profiles", fiber.name());
+            assertTrue(fiber.sparse(), "Expected sparse to be true");
+            assertEqual(8, fiber.fields().size());
+        });
+
+        test("Decode sparse records", () -> {
+            var input = "~items{a, b, c, d, e, f, g, h}:\na:1, c:3\nb:2\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("items").asArray();
+            assertEqual(1L, arr.get(0).asObject().get("a").asLong());
+            assertEqual(3L, arr.get(0).asObject().get("c").asLong());
+            assertTrue(arr.get(0).asObject().get("b").isNull(), "Expected b to be null");
+            assertEqual(2L, arr.get(1).asObject().get("b").asLong());
+        });
+
+        test("Encode sparse when mostly null", () -> {
+            var fields = new String[]{"a","b","c","d","e","f","g","h","i","j"};
+            var records = new ArrayList<JsonValue>();
+            for (int i = 0; i < 5; i++) {
+                var obj = new LinkedHashMap<String, JsonValue>();
+                for (var f : fields) obj.put(f, JsonValue.ofNull());
+                obj.put(fields[i % fields.length], JsonValue.of((long)(i + 1)));
+                records.add(JsonValue.ofObject(obj));
+            }
+            var wrapper = new LinkedHashMap<String, JsonValue>();
+            wrapper.put("sparse_data", JsonValue.ofArray(records));
+            var data = JsonValue.ofObject(wrapper);
+            var dhoom = DhoomCodec.encode(data);
+            assertContains(dhoom, "~sparse_data");
+        });
+
+        // --- Morphism Field Tests ---
+        System.out.println("\nMorphism Field Tests:");
+
+        test("Parse morphism modifier", () -> {
+            var fiber = DhoomCodec.parseFiber("orders{id@1, user_id->users}");
+            assertEqual("morphism", fiber.fields().get(1).modifier().type());
+            assertEqual("users", fiber.fields().get(1).modifier().target());
+        });
+
+        test("Decode morphism as regular values", () -> {
+            var input = "orders{id@1, user_id->users}:\nAlice\nBob\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("orders").asArray();
+            assertEqual("Alice", arr.get(0).asObject().get("user_id").asString());
+            assertEqual("Bob", arr.get(1).asObject().get("user_id").asString());
+        });
+
         // --- Summary ---
         System.out.println("\n=== Results: " + passed + " passed, " + failed + " failed, " + (passed + failed) + " total ===\n");
         if (failed > 0) System.exit(1);

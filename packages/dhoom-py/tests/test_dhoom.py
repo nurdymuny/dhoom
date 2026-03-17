@@ -376,5 +376,96 @@ class TestCompression(unittest.TestCase):
         self.assertLess(ratio, 0.6, f"Expected >40% compression, got {(1 - ratio) * 100:.1f}%")
 
 
+# -----------------------------------------------------------------------
+# v0.4 Features: Delta, Sparse, Morphism
+# -----------------------------------------------------------------------
+
+class TestDelta(unittest.TestCase):
+    """Test delta field encoding/decoding."""
+
+    def test_parse_delta_modifier(self):
+        fiber = parse_fiber("data{ts^, value}")
+        self.assertEqual(fiber.fields[0].name, "ts")
+        self.assertEqual(fiber.fields[0].modifier.type, "delta")
+        self.assertEqual(fiber.fields[1].name, "value")
+
+    def test_decode_delta_values(self):
+        input_str = "data{ts^, value}:\n1000, hello\n50, world\n25, foo"
+        result = decode(input_str)
+        self.assertEqual(result["data"][0]["ts"], 1000)
+        self.assertEqual(result["data"][1]["ts"], 1050)
+        self.assertEqual(result["data"][2]["ts"], 1075)
+
+    def test_encode_delta_when_beneficial(self):
+        timestamps = [1000000, 1000050, 1000120, 1000200, 1000310, 1000450, 1000600, 1000800, 1001050, 1001350]
+        data = {"readings": [{"ts": ts, "val": f"s{i}"} for i, ts in enumerate(timestamps)]}
+        encoded = encode(data)
+        self.assertIn("^", encoded)
+        decoded = decode(encoded)
+        for i, ts in enumerate(timestamps):
+            self.assertEqual(decoded["readings"][i]["ts"], ts)
+
+    def test_roundtrip_delta(self):
+        data = {"metrics": [
+            {"timestamp": 1700000000, "cpu": 45, "label": "a"},
+            {"timestamp": 1700000060, "cpu": 48, "label": "b"},
+            {"timestamp": 1700000120, "cpu": 52, "label": "c"},
+            {"timestamp": 1700000180, "cpu": 47, "label": "d"},
+            {"timestamp": 1700000240, "cpu": 50, "label": "e"},
+        ]}
+        decoded = decode(encode(data))
+        for i in range(5):
+            self.assertEqual(decoded["metrics"][i]["timestamp"], data["metrics"][i]["timestamp"])
+            self.assertEqual(decoded["metrics"][i]["cpu"], data["metrics"][i]["cpu"])
+
+
+class TestSparse(unittest.TestCase):
+    """Test sparse bundle encoding/decoding."""
+
+    def test_parse_sparse_prefix(self):
+        fiber = parse_fiber("~config{a, b, c}")
+        self.assertEqual(fiber.name, "config")
+        self.assertTrue(fiber.sparse)
+
+    def test_decode_sparse_records(self):
+        input_str = "~data{name, a, b, c, d, e, f, g, h}:\nname:Alice, a:1\nname:Bob, c:3\nname:Charlie"
+        result = decode(input_str)
+        self.assertEqual(result["data"][0]["name"], "Alice")
+        self.assertEqual(result["data"][0]["a"], 1)
+        self.assertIsNone(result["data"][0]["b"])
+        self.assertEqual(result["data"][1]["name"], "Bob")
+        self.assertEqual(result["data"][1]["c"], 3)
+        self.assertEqual(result["data"][2]["name"], "Charlie")
+
+    def test_encode_sparse_when_mostly_null(self):
+        fields = ["a", "b", "c", "d", "e", "f", "g", "h"]
+        records = []
+        for i in range(4):
+            r = {f: None for f in fields}
+            r[fields[i % len(fields)]] = i + 1
+            records.append(r)
+        encoded = encode({"sparse_test": records})
+        self.assertIn("~", encoded)
+        decoded = decode(encoded)
+        for i in range(4):
+            self.assertEqual(decoded["sparse_test"][i][fields[i % len(fields)]], i + 1)
+
+
+class TestMorphism(unittest.TestCase):
+    """Test morphism field parsing and decoding."""
+
+    def test_parse_morphism_modifier(self):
+        fiber = parse_fiber("orders{id, customer_id->customers}")
+        self.assertEqual(fiber.fields[1].name, "customer_id")
+        self.assertEqual(fiber.fields[1].modifier.type, "morphism")
+        self.assertEqual(fiber.fields[1].modifier.target, "customers")
+
+    def test_decode_morphism_as_regular_values(self):
+        input_str = "orders{id, customer_id->customers}:\n1, 42\n2, 43"
+        result = decode(input_str)
+        self.assertEqual(result["orders"][0]["customer_id"], 42)
+        self.assertEqual(result["orders"][1]["customer_id"], 43)
+
+
 if __name__ == "__main__":
     unittest.main()

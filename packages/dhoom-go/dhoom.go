@@ -17,10 +17,11 @@ import (
 // ---------------------------------------------------------------------------
 
 type Modifier struct {
-	Type         string      // "arithmetic", "default", "nested"
+	Type         string      // "arithmetic", "default", "nested", "delta", "morphism"
 	Start        interface{} // arithmetic start value
 	Step         *int        // arithmetic step (nil = 1)
 	DefaultValue interface{} // default value
+	Target       string      // morphism target bundle name
 }
 
 type FieldDecl struct {
@@ -31,6 +32,7 @@ type FieldDecl struct {
 type Fiber struct {
 	Name   string
 	Fields []FieldDecl
+	Sparse bool
 }
 
 // DhoomError represents an error during DHOOM encoding/decoding.
@@ -138,6 +140,16 @@ func arithmeticValue(start interface{}, step int, i int) interface{} {
 func parseFieldDecl(token string) FieldDecl {
 	token = strings.TrimSpace(token)
 
+	// Morphism: field->target (must check before nested '>')
+	if arrowIdx := strings.Index(token, "->"); arrowIdx != -1 {
+		return FieldDecl{Name: token[:arrowIdx], Modifier: &Modifier{Type: "morphism", Target: token[arrowIdx+2:]}}
+	}
+
+	// Delta: field^
+	if strings.HasSuffix(token, "^") {
+		return FieldDecl{Name: token[:len(token)-1], Modifier: &Modifier{Type: "delta"}}
+	}
+
 	// Nested: field>
 	if strings.HasSuffix(token, ">") {
 		return FieldDecl{Name: token[:len(token)-1], Modifier: &Modifier{Type: "nested"}}
@@ -179,6 +191,12 @@ func ParseFiber(input string) (Fiber, error) {
 		name = strings.TrimSpace(s[:braceStart])
 	}
 
+	sparse := false
+	if strings.HasPrefix(name, "~") {
+		sparse = true
+		name = name[1:]
+	}
+
 	fieldsStr := s[braceStart+1 : braceEnd]
 	parts := strings.Split(fieldsStr, ",")
 	var fields []FieldDecl
@@ -189,7 +207,7 @@ func ParseFiber(input string) (Fiber, error) {
 		}
 	}
 
-	return Fiber{Name: name, Fields: fields}, nil
+	return Fiber{Name: name, Fields: fields, Sparse: sparse}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +270,7 @@ func decodeFlatRecords(body string, fiber Fiber) []interface{} {
 	recFields := recordFields(fiber)
 	var records []interface{}
 	ordinal := 0
+	deltaAccum := make(map[string]float64)
 
 	for _, line := range strings.Split(body, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -290,6 +309,73 @@ func decodeFlatRecords(body string, fiber Fiber) []interface{} {
 					obj[rf.Name] = rf.Modifier.DefaultValue
 				}
 			}
+
+			// Delta accumulation
+			if rf.Modifier != nil && rf.Modifier.Type == "delta" {
+				if resolved, ok := obj[rf.Name]; ok {
+					if num, isNum := resolved.(float64); isNum {
+						if ordinal == 0 {
+							deltaAccum[rf.Name] = num
+						} else {
+							accumulated := deltaAccum[rf.Name] + num
+							deltaAccum[rf.Name] = accumulated
+							if accumulated == math.Trunc(accumulated) {
+								obj[rf.Name] = accumulated
+							} else {
+								obj[rf.Name] = accumulated
+							}
+						}
+					}
+				}
+			}
+		}
+
+		records = append(records, obj)
+		ordinal++
+	}
+
+	return records
+}
+
+func decodeSparseRecords(body string, fiber Fiber) []interface{} {
+	recFields := recordFields(fiber)
+	var records []interface{}
+	ordinal := 0
+
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		obj := make(map[string]interface{})
+
+		// Arithmetic fields
+		for _, fd := range fiber.Fields {
+			if fd.Modifier != nil && fd.Modifier.Type == "arithmetic" {
+				obj[fd.Name] = arithmeticValue(fd.Modifier.Start, getStep(fd.Modifier), ordinal)
+			}
+		}
+
+		// Defaults for missing fields
+		for _, rf := range recFields {
+			if rf.Modifier != nil && rf.Modifier.Type == "default" {
+				obj[rf.Name] = rf.Modifier.DefaultValue
+			} else {
+				obj[rf.Name] = nil
+			}
+		}
+
+		// Parse name:value pairs
+		pairs := splitRecordFields(trimmed)
+		for _, pair := range pairs {
+			colonIdx := strings.Index(pair, ":")
+			if colonIdx == -1 {
+				continue
+			}
+			fieldName := strings.TrimSpace(pair[:colonIdx])
+			fieldVal := strings.TrimSpace(pair[colonIdx+1:])
+			obj[fieldName] = coerce(fieldVal)
 		}
 
 		records = append(records, obj)
@@ -422,7 +508,9 @@ func decodeBundle(input string) (string, interface{}, error) {
 	}
 
 	var records []interface{}
-	if hasNested {
+	if fiber.Sparse {
+		records = decodeSparseRecords(body, fiber)
+	} else if hasNested {
 		records = decodeNestedRecords(body, fiber)
 	} else {
 		records = decodeFlatRecords(body, fiber)
@@ -581,6 +669,37 @@ func findModalDefault(values []interface{}) (interface{}, int) {
 	return bestVal, bestCount
 }
 
+func detectDelta(values []interface{}) bool {
+	if len(values) < 3 {
+		return false
+	}
+	nums := make([]int64, len(values))
+	for i, v := range values {
+		if _, isBool := v.(bool); isBool {
+			return false
+		}
+		f, ok := v.(float64)
+		if !ok || f != math.Trunc(f) {
+			return false
+		}
+		nums[i] = int64(f)
+	}
+	deltas := make([]int64, len(nums))
+	deltas[0] = nums[0]
+	for i := 1; i < len(nums); i++ {
+		deltas[i] = nums[i] - nums[i-1]
+	}
+	absLen := 0
+	for _, n := range nums {
+		absLen += len(strconv.FormatInt(n, 10))
+	}
+	deltaLen := 0
+	for _, d := range deltas {
+		deltaLen += len(strconv.FormatInt(d, 10))
+	}
+	return deltaLen < int(float64(absLen)*0.7)
+}
+
 func encodeBundle(name string, records []map[string]interface{}, indent int) string {
 	prefix := strings.Repeat(" ", indent)
 
@@ -593,6 +712,7 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 
 	var orderedFields []FieldDecl
 	arithmeticKeys := make(map[string]bool)
+	deltaKeys := make(map[string]bool)
 	defaultKeys := make(map[string]interface{})
 	nestedKeys := make(map[string]bool)
 	var variableKeys []string
@@ -628,6 +748,12 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 			continue
 		}
 
+		// Check delta
+		if detectDelta(values) {
+			deltaKeys[key] = true
+			continue
+		}
+
 		// Check modal default
 		modalVal, modalCount := findModalDefault(values)
 		if modalCount > len(records)/2 {
@@ -636,6 +762,36 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 		}
 
 		variableKeys = append(variableKeys, key)
+	}
+
+	// Ensure at least one field produces record body content
+	if len(variableKeys) == 0 && len(deltaKeys) == 0 && len(nestedKeys) == 0 {
+		for _, key := range keys {
+			if arithmeticKeys[key] {
+				delete(arithmeticKeys, key)
+				var newFields []FieldDecl
+				for _, f := range orderedFields {
+					if f.Name != key {
+						newFields = append(newFields, f)
+					}
+				}
+				orderedFields = newFields
+				variableKeys = append(variableKeys, key)
+				break
+			}
+			if _, ok := defaultKeys[key]; ok {
+				delete(defaultKeys, key)
+				variableKeys = append(variableKeys, key)
+				break
+			}
+		}
+	}
+
+	// Delta fields
+	for _, key := range keys {
+		if deltaKeys[key] {
+			orderedFields = append(orderedFields, FieldDecl{Name: key, Modifier: &Modifier{Type: "delta"}})
+		}
 	}
 
 	// Variable fields
@@ -678,7 +834,34 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 		}
 	}
 
+	// Check sparsity - use sparse mode when ≥8 non-arithmetic fields and >75% null/empty
+	var nonArithKeys []string
+	for _, k := range keys {
+		if !arithmeticKeys[k] && !nestedKeys[k] {
+			nonArithKeys = append(nonArithKeys, k)
+		}
+	}
+	useSparse := false
+	if len(nonArithKeys) >= 8 {
+		nullCount := 0
+		totalCells := 0
+		for _, r := range records {
+			for _, k := range nonArithKeys {
+				totalCells++
+				v := r[k]
+				if v == nil || v == "" {
+					nullCount++
+				}
+			}
+		}
+		useSparse = nullCount > int(float64(totalCells)*0.75)
+	}
+
 	// Emit header
+	sparsePrefix := ""
+	if useSparse {
+		sparsePrefix = "~"
+	}
 	var headerParts []string
 	for _, fd := range orderedFields {
 		s := fd.Name
@@ -693,12 +876,16 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 				s += "|" + valueToDhoom(fd.Modifier.DefaultValue)
 			case "nested":
 				s += ">"
+			case "delta":
+				s += "^"
+			case "morphism":
+				s += "->" + fd.Modifier.Target
 			}
 		}
 		headerParts = append(headerParts, s)
 	}
 
-	out := fmt.Sprintf("%s%s{%s}:\n", prefix, name, strings.Join(headerParts, ", "))
+	out := fmt.Sprintf("%s%s%s{%s}:\n", prefix, sparsePrefix, name, strings.Join(headerParts, ", "))
 
 	// Emit records
 	var recFields []FieldDecl
@@ -707,6 +894,34 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 			recFields = append(recFields, f)
 		}
 	}
+
+	if useSparse {
+		for _, record := range records {
+			var pairs []string
+			for _, rf := range recFields {
+				if rf.Modifier != nil && rf.Modifier.Type == "nested" {
+					continue
+				}
+				val := record[rf.Name]
+				if val != nil && val != "" {
+					pairs = append(pairs, rf.Name+":"+valueToDhoom(val))
+				}
+			}
+			if len(pairs) == 0 {
+				for _, rf := range recFields {
+					if rf.Modifier == nil || rf.Modifier.Type != "nested" {
+						pairs = append(pairs, rf.Name+":null")
+						break
+					}
+				}
+			}
+			out += prefix + strings.Join(pairs, ", ") + "\n"
+		}
+		return out
+	}
+
+	recordIdx := 0
+	prevDelta := make(map[string]float64)
 
 	for _, record := range records {
 		var values []string
@@ -733,7 +948,22 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 			}
 
 			val := record[rf.Name]
-			if rf.Modifier != nil && rf.Modifier.Type == "default" {
+
+			if rf.Modifier != nil && rf.Modifier.Type == "delta" {
+				numVal := float64(0)
+				if f, ok := val.(float64); ok {
+					numVal = f
+				}
+				if recordIdx == 0 {
+					prevDelta[rf.Name] = numVal
+					values = append(values, valueToDhoom(numVal))
+				} else {
+					prev := prevDelta[rf.Name]
+					delta := numVal - prev
+					prevDelta[rf.Name] = numVal
+					values = append(values, valueToDhoom(delta))
+				}
+			} else if rf.Modifier != nil && rf.Modifier.Type == "default" {
 				if jsonEqual(val, rf.Modifier.DefaultValue) {
 					values = append(values, "")
 				} else {
@@ -759,12 +989,12 @@ func encodeBundle(name string, records []map[string]interface{}, indent int) str
 		} else {
 			out += "\n"
 		}
+
+		recordIdx++
 	}
 
 	return out
 }
-
-// orderedKeys returns the keys of a map in a stable order.
 // Since Go maps are unordered, we use json.Marshal/Unmarshal to preserve
 // the natural ordering from the original JSON.
 func orderedKeys(m map[string]interface{}) []string {

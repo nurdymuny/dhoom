@@ -2,7 +2,7 @@
 
 **Davis Human-readable Optimized Object Markup**
 
-[![SPEC v0.3](https://img.shields.io/badge/spec-v0.3-E8A830?labelColor=1b1b1f)](SPEC.md)
+[![SPEC v0.4](https://img.shields.io/badge/spec-v0.4-E8A830?labelColor=1b1b1f)](SPEC.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-E8A830?labelColor=1b1b1f)](LICENSE)
 
 **DHOOM** is a compact, human-readable serialization format that applies fiber bundle geometry to structured data. It encodes the same data model as JSON — objects, arrays, strings, numbers, booleans, null — but eliminates structural redundancy by exploiting arithmetic indices, modal defaults, and positional encoding.
@@ -23,6 +23,10 @@ Think of it as what happens when a differential geometer looks at JSON and says:
     - [Token Count (GPT-4o tokenizer, o200k\_base)](#token-count-gpt-4o-tokenizer-o200k_base)
     - [LLM Retrieval Accuracy (209 questions, Claude Sonnet)](#llm-retrieval-accuracy-209-questions-claude-sonnet)
   - [Notation Reference](#notation-reference)
+  - [v0.4 Features](#v04-features)
+    - [Delta Fields — Temporal Compression](#delta-fields---temporal-compression)
+    - [Sparse Bundles — Wide Table Compression](#sparse-bundles---wide-table-compression)
+    - [Bundle Morphisms — Cross-Bundle References](#bundle-morphisms----cross-bundle-references)
   - [More Examples](#more-examples)
     - [Sensor Readings (80% reduction)](#sensor-readings-80-reduction)
     - [Nested Objects](#nested-objects)
@@ -44,6 +48,9 @@ JSON repeats field names on every record. TOON factors them into a header. DHOOM
 | Common values | Repeated M times | Repeated M times | `\|default` — silence means agreement |
 | Trailing defaults | Always listed | Always listed | **Elided** — parser fills in |
 | Nested names | Repeated in child | Repeated in child | `>` — inherited from parent |
+| Large absolute values | Repeated verbatim | Repeated verbatim | `^` — delta-encoded differences |
+| Sparse wide tables | All nulls listed | All nulls listed | `~` — named pairs, nulls omitted |
+| Cross-bundle refs | No schema support | No schema support | `->` — declared morphisms |
 
 **The principle:** don't transmit what the receiver can derive.
 
@@ -99,7 +106,7 @@ DHOOM treats every data collection as a **fiber bundle**:
     SECTION (record)   SECTION (record)   SECTION (with deviations)
 ```
 
-Four compression principles:
+Seven compression principles:
 
 | Symbol | Principle | What it does |
 |---|---|---|
@@ -107,6 +114,9 @@ Four compression principles:
 | `\|` | **Modal defaults** | Most common value declared once; records stay silent |
 | `:` | **Deviation marking** | Colon prefixes values that override the default |
 | *(trailing elision)* | **Silence = agreement** | Trailing default fields just stop. Parser fills in. |
+| `^` | **Delta encoding** | Store differences, not absolutes. Parallel transport. |
+| `~` | **Sparse bundles** | Named pairs for wide tables; nulls vanish. |
+| `->` | **Bundle morphisms** | Declared foreign-key relationships between bundles. |
 
 ## When to Use DHOOM
 
@@ -177,11 +187,58 @@ DHOOM's advantage scales with **structural regularity**. The sensor example achi
 | `field@start+step` | Arithmetic — start, start+step, start+2·step, ... |
 | `field\|default` | Modal default — omitted when record matches |
 | `field>` | Nested sub-bundle (child inherits name) |
+| `field^` | Delta-encoded — differences from previous record |
+| `field->target` | Morphism — foreign key referencing another bundle |
+| `~name{fields}:` | Sparse bundle — records use `name:value` pairs |
 | `:` (after header) | Schema → data separator |
 | `:value` (in record) | Default override — this field deviates |
 | newline | Record boundary |
 | `,` | Field separator |
 | `T` / `F` | Boolean shorthand |
+
+## v0.4 Features
+
+### Delta Fields (`^`) — Temporal Compression
+
+When numeric values have large absolute magnitudes but small changes between records, delta encoding transmits only the differences:
+
+```
+events{name, ts^}:
+Alice, 1000000
+Bob, 50
+Carol, 70
+```
+
+The first record is absolute (`ts=1000000`). Subsequent records store deltas: Bob's timestamp is `1000000 + 50 = 1000050`, Carol's is `1000050 + 70 = 1000120`.
+
+Mathematically, this is **parallel transport along the base space** — each section value is defined relative to its predecessor via a discrete connection.
+
+### Sparse Bundles (`~`) — Wide Table Compression
+
+When a bundle has many fields but most values are null, sparse mode switches from positional to named encoding:
+
+```
+~config{id@1, host, port, timeout, retries, debug, verbose, log_level}:
+host:server-a, port:8080
+host:server-b, port:9090, debug:T
+host:server-c, log_level:warn
+```
+
+Only non-null fields appear. Missing fields get `null` (or their declared default). This models **sub-bundle encoding** — projecting to the non-trivial fiber components.
+
+### Bundle Morphisms (`->`) — Cross-Bundle References
+
+```
+users{id@1, name}:
+Alice
+Bob
+
+posts{id@1, author->users, title, likes}:
+2, First Post, 42
+1, Hello World, 108
+```
+
+`author->users` declares that the `author` field references records in the `users` bundle — a foreign key. This is a **schema annotation only**; values are decoded normally. Morphisms model **bundle morphisms** *(f, g): (E₁, B₁) → (E₂, B₂)* — structure-preserving maps between fiber bundles.
 
 ## More Examples
 
@@ -225,13 +282,13 @@ The nested `items` bundle applies arithmetic compression (`sku@A100`) recursivel
 
 | Language | Package | Status |
 |---|---|---|
-| TypeScript | `@dhoom-format/dhoom` | ✅ v0.3.0 |
-| Rust | `dhoom` | ✅ v0.3.0 |
-| Python | `dhoom` | ✅ v0.3.0 — 42/42 tests |
-| Go | `dhoom-go` | ✅ v0.3.0 |
-| .NET (C#) | `Dhoom` | ✅ v0.3.0 — 30/30 tests |
-| Java | `dev.dhoom` | ✅ v0.3.0 — 31/31 tests |
-| CLI | `@dhoom-format/cli` | ✅ v0.3.0 |
+| TypeScript | `@dhoom-format/dhoom` | ✅ v0.4.0 — 71/71 tests |
+| Rust | `dhoom` | ✅ v0.4.0 — 27/27 tests |
+| Python | `dhoom` | ✅ v0.4.0 — 51/51 tests |
+| Go | `dhoom-go` | ✅ v0.4.0 |
+| .NET (C#) | `Dhoom` | ✅ v0.4.0 — 39/39 tests |
+| Java | `dev.dhoom` | ✅ v0.4.0 |
+| CLI | `@dhoom-format/cli` | ✅ v0.4.0 |
 
 ## Contributing
 

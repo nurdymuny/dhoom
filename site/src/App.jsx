@@ -187,6 +187,9 @@ const DOCS = {
       "### Your First Example",
       C + "dhoom\nusers{id@1, name, role, email, active|T}:\nSato Yuki, admin, yuki@co.jp\nMaria Santos, editor, maria@co.br\nChen Wei, viewer, wei@co.cn, :F\n" + C,
       "This encodes three user records. `id` is sequential from 1 (derived from position, never listed). `active` defaults to `T` (true). Only Chen Wei deviates (`:F`), so only Chen Wei pays for that field. The other two records each transmit **three fields** instead of five.",
+      "### What\u2019s New in v0.4",
+      "v0.4 introduces three features from geometric fiber bundle theory:",
+      "- **Delta fields (`^`)** \u2014 Store differences instead of absolute values. Parallel transport along the base space.\n- **Sparse bundles (`~`)** \u2014 Named `field:value` pairs for wide tables. Sub-bundle projection.\n- **Bundle morphisms (`->`)** \u2014 Declared foreign-key references between bundles. Structure-preserving maps.",
     ].join("\n\n"),
   },
 
@@ -211,8 +214,8 @@ const DOCS = {
       "## Collections (Arrays of Objects)",
       "Collections are the heart of DHOOM. When an array contains objects with a shared schema, DHOOM uses the **fiber header** to declare the schema once and encode records positionally.",
       "### Fiber Header Syntax",
-      C + "\nname{field1, field2@start, field3|default, field4>}:\n" + C,
-      "The header declares:\n\n- **Collection name**: `name`\n- **Field declarations**: inside `{}` \u2014 the fiber (schema)\n- **Modifiers**: `@` (arithmetic), `|` (default), `>` (nested)\n- **Colon**: separates header from body",
+      C + "\nname{field1, field2@start, field3|default, field4>, field5^, field6->target}:\n" + C,
+      "The header declares:\n\n- **Collection name**: `name`\n- **Field declarations**: inside `{}` \u2014 the fiber (schema)\n- **Modifiers**: `@` (arithmetic), `|` (default), `>` (nested), `^` (delta), `->` (morphism)\n- **Colon**: separates header from body\n- **Sparse prefix**: `~name{...}:` switches to named-pair records",
       "### Basic Collection",
       C + "dhoom\nitems{sku, name, qty, price}:\nA100, Widget, 2, 49.99\nA101, Gadget, 1, 50.01\n" + C,
       "Each row contains values in the same order as the field list. Position maps value to field.",
@@ -355,8 +358,12 @@ const DOCS = {
       "**2. Base compression (@):** When B has arithmetic structure, encode by generator: `id@101` means B = {101, 102, ...} = 101 + \u2124\u22650. One declaration replaces N index values.",
       "**3. Zero section (| defaults):** Define \u03c3\u2080 via `|`. Records encode only deviation from \u03c3\u2080. When \u03c3(x) = \u03c3\u2080(x) \u2192 silence. When \u03c3(x) \u2260 \u03c3\u2080(x) \u2192 transmit :value.",
       "**4. Trailing elision (coordinate choice):** Order the fiber so defaulted fields are trailing. This chooses coordinates where most sections have short representations.",
+      "### v0.4: Three New Geometric Operations",
+      "**5. Parallel transport (^ delta):** A discrete **connection** on the bundle. Each section value is defined relative to its predecessor, encoding only the covariant derivative (the difference). This transforms absolute coordinates into connection-based representation.",
+      "**6. Sub-bundle projection (~ sparse):** When most fiber components are trivial, project to the **non-trivial sub-bundle**. Named pairs encode only the non-zero components, modelling the essential support of each section.",
+      "**7. Bundle morphisms (->):** Structure-preserving maps *(f, g): (E\u2081, B\u2081) \u2192 (E\u2082, B\u2082)* between fiber bundles. Declared relationships connect separate bundles, making the category structure of the data explicit.",
       "### The Compression Formula",
-      "For N records with K fields, A arithmetic, D defaulted matching M records:\n\n**Fields omitted \u2265 (A \u00d7 N) + (D \u00d7 M)**",
+      "For N records with K fields, A arithmetic, D defaulted matching M records, \u0394 delta fields saving S% characters, and W sparse bundles with P% null cells:\n\n**Fields omitted \u2265 (A \u00d7 N) + (D \u00d7 M) + \u0394-savings + sparse-savings**",
       "For highly uniform data, this eliminates 70\u201385% of field transmissions.",
       "### The Sudoku Principle",
       "DHOOM follows the **Sudoku Principle**: *local constraints propagate to determine global structure.*\n\nIn Sudoku, the rules + a few given digits determine the grid. The information content is in the constraints and the exceptions, not in the 81 cells.\n\nSimilarly: the header constrains fields and defaults, generators constrain indices, records transmit only the \u201Cgiven digits\u201D \u2014 the irreducible signal.",
@@ -364,8 +371,70 @@ const DOCS = {
       "The Davis Geometric framework (an original theoretical contribution, not standard differential geometry) proposes the heuristic **C = \u03c4/K**:\n\n- **\u03c4 (tension)** \u2014 the information content, the signal\n- **K (curvature)** \u2014 the structural regularity (used metaphorically, not in the Riemannian sense)\n- **C (capacity)** \u2014 the compression achievable",
       "High regularity (low K) \u2192 high capacity. This is a design heuristic derived from the geometric analogy, not a theorem of differential geometry. It predicts that DHOOM\u2019s savings scale with structural regularity \u2014 a prediction borne out by benchmarks.",
       "### Why This Matters",
-      "The mathematical foundation:\n\n1. **Guarantees** every optimization is lossless (trivialization preserves content)\n2. **Predicts** compression ratios from data structure before encoding\n3. **Proves** trailing elision and field ordering don\u2019t affect content (coordinate invariance)\n4. **Unifies** all four features under one geometric framework\n5. **Acknowledges scope** \u2014 these are trivial bundles; the power is in coordinate choice, not topology",
+      "The mathematical foundation:\n\n1. **Guarantees** every optimization is lossless (trivialization preserves content)\n2. **Predicts** compression ratios from data structure before encoding\n3. **Proves** trailing elision and field ordering don\u2019t affect content (coordinate invariance)\n4. **Unifies** all seven features under one geometric framework\n5. **Extends** from trivial bundles to connections (delta), sub-bundles (sparse), and morphisms (cross-bundle references)\n6. **Acknowledges scope** \u2014 these are trivial bundles; the power is in coordinate choice, not topology",
       "For the full framework: Davis, B. R. (2024). *The Geometry of Sameness*. Amazon KDP. Davis, B. R. (2026). *The Double Cover Principle*. Zenodo.",
+    ].join("\n\n"),
+  },
+
+  "delta-fields": {
+    title: "Delta Fields (^)", cat: "Guide",
+    content: [
+      "## Delta Fields",
+      "The `^` modifier declares a field as **delta-encoded**. The first record contains the absolute value. Each subsequent record stores the *difference* from the previous record.",
+      "### Why Delta?",
+      "When numeric values have large absolute magnitudes but small changes between records, encoding differences saves significant characters:",
+      C + "dhoom\nevents{name, ts^}:\nAlice, 1000000\nBob, 50\nCarol, 70\n" + C,
+      "Decodes to ts = 1000000, 1000050, 1000120. The deltas `50` and `70` are much shorter than `1000050` and `1000120`.",
+      "### The Geometry",
+      "Delta encoding models **parallel transport along the base space**. In a fiber bundle with a *connection*, moving along a path in the base space transports fiber values via infinitesimal increments. Delta encoding is the discrete version: each section value is defined relative to its predecessor.",
+      "This transforms the encoding from absolute coordinates to a **connection-based representation** \u2014 the connection 1-form captures the rate of change.",
+      "### When to Use ^",
+      "Use `^` when:\n- Values are large integers with small changes (timestamps, counters, monotonic IDs)\n- The total character count of deltas is at least **30% shorter** than absolute values\n- All values are numeric (integer or float)\n- There are at least 3 records",
+      "### Combining with @",
+      "Delta and arithmetic are mutually exclusive on the same field. Use `@` when the sequence is perfectly regular (constant step). Use `^` when the changes are small but irregular.",
+      C + "dhoom\nmetrics{ts@1000+60, temp^, pressure^}:\n22.4, 1013\n1, -2\n-3, 1\n" + C,
+      "Here `ts` uses arithmetic (perfectly regular), while `temp` and `pressure` use delta (irregular but small changes).",
+      "### Encoder Detection",
+      "The encoder automatically detects delta-encodable fields by:\n1. Checking all values are numeric\n2. Computing deltas\n3. Comparing total character length of deltas vs absolutes\n4. Emitting `^` only when delta representation saves \u226530%",
+    ].join("\n\n"),
+  },
+
+  "sparse-bundles": {
+    title: "Sparse Bundles (~)", cat: "Guide",
+    content: [
+      "## Sparse Bundles",
+      "The `~` prefix declares a bundle in **sparse mode**. Records use `name:value` pairs instead of positional encoding, and null/empty fields are simply omitted.",
+      "### Why Sparse?",
+      "When a bundle has many fields but most values are null or empty, positional encoding wastes space transmitting emptiness:",
+      C + "dhoom\n# Without sparse: lots of nulls\nconfig{host, port, timeout, retries, debug, verbose, log_level, max_conn}:\nserver-a, 8080, null, null, null, null, null, null\nserver-b, 9090, null, null, T, null, null, null\n" + C,
+      C + "dhoom\n# With sparse: just the non-null fields\n~config{host, port, timeout, retries, debug, verbose, log_level, max_conn}:\nhost:server-a, port:8080\nhost:server-b, port:9090, debug:T\n" + C,
+      "### The Geometry",
+      "Sparse encoding models **sub-bundle projection**. When most fiber components are trivial (null), projecting to the non-trivial sub-bundle captures the essential information. Each record specifies only the components that deviate from the zero section.",
+      "### Record Format",
+      "In sparse mode, each record line contains comma-separated `fieldname:value` pairs. The colon separates field name from value (distinct from the `:value` deviation marker in positional mode).",
+      "### Missing Fields",
+      "Fields not listed in a sparse record receive:\n- Their declared **default** value, if the field has a `|` modifier\n- **`null`** otherwise",
+      "Arithmetic fields (`@`) still derive their values from position, regardless of sparse mode.",
+      "### Encoder Detection",
+      "The encoder automatically considers sparse mode when:\n- The bundle has **\u22658 non-arithmetic, non-nested fields**\n- More than **75%** of values across all records are null or empty string",
+    ].join("\n\n"),
+  },
+
+  "morphisms": {
+    title: "Bundle Morphisms (->)", cat: "Guide",
+    content: [
+      "## Bundle Morphisms",
+      "The `->` modifier declares that a field\u2019s values reference records in another named bundle. This is a **schema annotation** \u2014 it documents the relationship without changing encoding or decoding.",
+      "### Example",
+      C + "dhoom\nusers{id@1, name}:\nAlice\nBob\nCarol\n\nposts{id@1, author->users, title, likes}:\n2, First Post, 42\n1, Hello World, 108\n3, DHOOM Guide, 256\n" + C,
+      "`author->users` declares that the `author` field\u2019s values (2, 1, 3) are foreign keys referencing records in the `users` bundle.",
+      "### The Geometry",
+      "Morphisms model **bundle morphisms** *(f, g): (E\u2081, B\u2081) \u2192 (E\u2082, B\u2082)* \u2014 structure-preserving maps between fiber bundles. The morphism arrow connects two separate bundles through a declared relationship.",
+      "In relational database terms, this is a foreign key. In category theory, it\u2019s a morphism in the category of bundles. DHOOM makes this structure **explicit in the schema**.",
+      "### Semantics",
+      "- The `->target` modifier is **purely declarative**\n- A conforming decoder treats the field value the same as a plain variable field\n- The target bundle name is metadata for tooling, documentation, and query planning\n- A field may have at most one modifier; `->` is mutually exclusive with `@`, `|`, `>`, and `^`",
+      "### Use Cases",
+      "- **Relational data**: Express foreign keys between DHOOM bundles\n- **Graph structures**: Declare edges by referencing node bundles\n- **API documentation**: Make field relationships self-documenting\n- **Query planning**: Tools can use morphisms to join bundles automatically",
     ].join("\n\n"),
   },
 
@@ -379,7 +448,7 @@ const DOCS = {
       "| Data Pattern | vs JSON | vs TOON |\n|---|---|---|\n| Uniform arrays, some defaults | 55\u201365% | 25\u201335% |\n| High-uniformity (IoT) | 70\u201385% | 45\u201360% |\n| Mixed nested + tabular | 40\u201355% | 15\u201325% |\n| Pure nested objects | 10\u201320% | ~0% |",
       "### Prompt Engineering",
       "Declare the format in your system prompt:",
-      C + "\nThe data below is in DHOOM format:\n- {fields}: declares the schema\n- @ = sequential from start (derived from position)\n- | = default value (omitted values match it)\n- : prefix = this value overrides the default\n- T/F = true/false\n" + C,
+      C + "\nThe data below is in DHOOM format:\n- {fields}: declares the schema\n- @ = sequential from start (derived from position)\n- | = default value (omitted values match it)\n- : prefix = this value overrides the default\n- ^ = delta-encoded (first absolute, rest are differences)\n- ~ prefix = sparse bundle (name:value pairs, missing = null)\n- -> = foreign key reference to another bundle\n- T/F = true/false\n" + C,
       "### Integration Pattern",
       C + "javascript\nconst data = await fetchFromAPI();  // JSON\nconst dhoomStr = dhoom.encode(data);\nconst prompt = \"Data:\\n\" + dhoomStr + \"\\n\\nQuestion: ...\";\n" + C,
       "JSON stays in your APIs. DHOOM enters only at the LLM boundary.",
@@ -412,25 +481,25 @@ const DOCS = {
     content: [
       "## Quick Reference",
       "### Header Syntax",
-      "| Pattern | Meaning |\n|---|---|\n| `name{fields}:` | Collection with schema |\n| `{fields}:` | Anonymous object |\n| `field` | Variable field |\n| `field@start` | Sequential from start |\n| `field@start+step` | Arithmetic with step |\n| `field\\|default` | Default value |\n| `field>` | Nested sub-bundle |",
+      "| Pattern | Meaning |\n|---|---|\n| `name{fields}:` | Collection with schema |\n| `{fields}:` | Anonymous object |\n| `field` | Variable field |\n| `field@start` | Sequential from start |\n| `field@start+step` | Arithmetic with step |\n| `field\\|default` | Default value |\n| `field>` | Nested sub-bundle |\n| `field^` | Delta-encoded (differences) |\n| `field->target` | Morphism (foreign key) |\n| `~name{fields}:` | Sparse bundle (named pairs) |",
       "### Record Syntax",
-      "| Pattern | Meaning |\n|---|---|\n| `value, value` | Positional values |\n| `:value` | Default override |\n| `T` / `F` | Boolean true/false |\n| `null` | Null value |\n| *(trailing omission)* | Defaults elided |\n| newline | Record boundary |",
+      "| Pattern | Meaning |\n|---|---|\n| `value, value` | Positional values |\n| `:value` | Default override |\n| `name:value` | Sparse field (in `~` bundles) |\n| `T` / `F` | Boolean true/false |\n| `null` | Null value |\n| *(trailing omission)* | Defaults elided |\n| newline | Record boundary |",
       "### Rules",
-      "1. `@` fields never appear in records \u2014 derived from position\n2. `|` fields omitted when matching \u2014 silence = agreement\n3. Trailing defaults elided \u2014 just stop writing\n4. `:` marks deviation \u2014 \u201CI disagree with the default\u201D\n5. `>` children inherit name \u2014 no repetition\n6. Field ordering = compression strategy \u2014 defaults at end\n7. No record count \u2014 parser counts newlines\n8. `T`/`F` are case-sensitive \u2014 only uppercase",
+      "1. `@` fields never appear in records \u2014 derived from position\n2. `|` fields omitted when matching \u2014 silence = agreement\n3. Trailing defaults elided \u2014 just stop writing\n4. `:` marks deviation \u2014 \u201CI disagree with the default\u201D\n5. `>` children inherit name \u2014 no repetition\n6. `^` fields store deltas \u2014 first record absolute, rest are differences\n7. `~` bundles use `name:value` pairs \u2014 missing fields are null\n8. `->target` declares relationships \u2014 metadata only\n9. Field ordering = compression strategy \u2014 defaults at end\n10. No record count \u2014 parser counts newlines\n11. `T`/`F` are case-sensitive \u2014 only uppercase",
       "### Grammar (EBNF)",
-      C + "ebnf\ndocument  = bundle\nbundle    = name? \"{\" fiber \"}\" \":\" body\nfiber     = field ( \",\" field )*\nfield     = identifier modifier?\nmodifier  = \"@\" start ( \"+\" step )?\n          | \"|\" default_value\n          | \">\"\nbody      = record ( NEWLINE record )*\nrecord    = entry ( \",\" entry )*\nentry     = value | \":\" value | bundle\nboolean   = \"T\" | \"F\"\nidentifier= [A-Za-z_][A-Za-z0-9_-]*\n" + C,
+      C + "ebnf\ndocument  = bundle\nbundle    = \"~\"? name? \"{\" fiber \"}\" \":\" body\nfiber     = field ( \",\" field )*\nfield     = identifier modifier?\nmodifier  = \"@\" start ( \"+\" step )?\n          | \"|\" default_value\n          | \">\"\n          | \"^\"\n          | \"->\" identifier\nbody      = record ( NEWLINE record )*\nrecord    = entry ( \",\" entry )*\nentry     = value | \":\" value | name \":\" value | bundle\nboolean   = \"T\" | \"F\"\nidentifier= [A-Za-z_][A-Za-z0-9_-]*\n" + C,
     ].join("\n\n"),
   },
 
   "specification": {
     title: "Full Specification", cat: "Reference",
     content: [
-      "## DHOOM Specification v0.3",
+      "## DHOOM Specification v0.4",
       "The full normative specification is maintained on GitHub.",
       "### Sections",
-      "1. Introduction \u2014 design principles, geometric interpretation\n2. File Format \u2014 encoding (UTF-8), extension (.dhoom), media type (text/dhoom)\n3. Fiber (Schema Header) \u2014 identifiers, modifiers\n4. Arithmetic Fields (@) \u2014 numeric and string-pattern rules\n5. Default Fields (|) \u2014 declaration, omission, override syntax, trailing elision\n6. Nested Bundles (>) \u2014 declaration, implied names, recursion\n7. Records (Body) \u2014 delimiters, separation, positional mapping, types\n8. Type Coercion \u2014 detection rules\n9. Formal Grammar (EBNF) \u2014 complete grammar\n10. Conversion Rules \u2014 JSON \u2194 DHOOM\n11. Compression Model \u2014 formal analysis\n12. Prior Art Comparison \u2014 feature matrix\n13. References",
+      "1. Introduction \u2014 design principles, geometric interpretation\n2. File Format \u2014 encoding (UTF-8), extension (.dhoom), media type (text/dhoom)\n3. Fiber (Schema Header) \u2014 identifiers, modifiers\n4. Arithmetic Fields (@) \u2014 numeric and string-pattern rules\n5. Default Fields (|) \u2014 declaration, omission, override syntax, trailing elision\n6. Nested Bundles (>) \u2014 declaration, implied names, recursion\n7. Records (Body) \u2014 delimiters, separation, positional mapping, types\n8. Type Coercion \u2014 detection rules\n9. Formal Grammar (EBNF) \u2014 complete grammar\n10. Conversion Rules \u2014 JSON \u2194 DHOOM\n11. Compression Model \u2014 formal analysis\n12. Delta Fields (^) \u2014 temporal compression via parallel transport\n13. Sparse Bundles (~) \u2014 sub-bundle encoding for wide tables\n14. Bundle Morphisms (->) \u2014 structure-preserving cross-bundle references\n15. Prior Art Comparison \u2014 feature matrix\n16. References",
       "### Versioning",
-      "Semantic versioning. Current: **v0.3** (draft).",
+      "Semantic versioning. Current: **v0.4** (draft).",
     ].join("\n\n"),
   },
 
@@ -442,7 +511,7 @@ const DOCS = {
       "### What Stays the Same",
       "- Positional encoding via header \u2713\n- Header declares fields once \u2713\n- Comma-separated values \u2713\n- Human-readable text \u2713\n- Lossless JSON round-trip \u2713\n- Nesting support \u2713",
       "### What DHOOM Adds",
-      "| Feature | TOON | DHOOM |\n|---|---|---|\n| Arithmetic fields | \u2717 | `@start+step` |\n| Modal defaults | \u2717 | `field\\|value` |\n| Deviation marking | \u2717 | `:override` |\n| Trailing elision | \u2717 | Defaults at end \u2192 records stop |\n| Implied nesting | \u2717 | `>` child inherits name |\n| Boolean shorthand | \u2717 | `T`/`F` |\n| No record count | `[N]` required | Parser counts |\n| Field ordering | Not meaningful | Compression decision |",
+      "| Feature | TOON | DHOOM |\n|---|---|---|\n| Arithmetic fields | \u2717 | `@start+step` |\n| Modal defaults | \u2717 | `field\\|value` |\n| Deviation marking | \u2717 | `:override` |\n| Trailing elision | \u2717 | Defaults at end \u2192 records stop |\n| Implied nesting | \u2717 | `>` child inherits name |\n| Boolean shorthand | \u2717 | `T`/`F` |\n| Delta encoding | \u2717 | `field^` \u2014 differences from previous |\n| Sparse bundles | \u2717 | `~name{}` \u2014 named pairs, nulls omitted |\n| Bundle morphisms | \u2717 | `field->target` \u2014 foreign keys |\n| No record count | `[N]` required | Parser counts |\n| Field ordering | Not meaningful | Compression decision |",
       "### Step-by-Step",
       "1. **Drop `[N]`** \u2014 `reviews[3]{...}` \u2192 `reviews{...}`\n2. **Add `@`** to sequential fields \u2014 remove from records\n3. **Add `|`** for common values \u2014 reorder to end\n4. **Replace booleans** \u2014 `true`\u2192`T`, `false`\u2192`F`\n5. **Mark overrides** \u2014 prefix deviations with `:`\n6. **Elide trailing defaults** \u2014 stop writing when the rest match\n7. **Nested names** \u2014 children use `{fields}:` not `name{fields}:`",
     ].join("\n\n"),
@@ -453,10 +522,10 @@ const DOCS = {
     content: [
       "## Language Implementations",
       "### Official SDKs",
-      "| Language | Package | Status |\n|---|---|---|\n| **TypeScript** | `@dhoom-format/dhoom` | ✅ v0.3.0 |\n| **Rust** | `dhoom` | ✅ v0.3.0 |\n| **Python** | `dhoom` | ✅ v0.3.0 |\n| **Go** | `dhoom-go` | ✅ v0.3.0 |\n| **.NET (C#)** | `Dhoom` | ✅ v0.3.0 |\n| **Java** | `dev.dhoom` | ✅ v0.3.0 |\n| **CLI** | `@dhoom-format/cli` | ✅ v0.3.0 |",
+      "| Language | Package | Status |\n|---|---|---|\n| **TypeScript** | `@dhoom-format/dhoom` | \u2705 v0.4.0 \u2014 71/71 tests |\n| **Rust** | `dhoom` | \u2705 v0.4.0 \u2014 27/27 tests |\n| **Python** | `dhoom` | \u2705 v0.4.0 \u2014 51/51 tests |\n| **Go** | `dhoom-go` | \u2705 v0.4.0 |\n| **.NET (C#)** | `Dhoom` | \u2705 v0.4.0 \u2014 39/39 tests |\n| **Java** | `dev.dhoom` | \u2705 v0.4.0 |\n| **CLI** | `@dhoom-format/cli` | \u2705 v0.4.0 |",
       "### API",
-      "All implementations expose:\n\n`encode(json_value) → dhoom_string`\n`decode(dhoom_string) → json_value`",
-      "The encoder detects arithmetic sequences, computes modal defaults, orders fields for trailing elision, and emits records with deviation marking.",
+      "All implementations expose:\n\n`encode(json_value) \u2192 dhoom_string`\n`decode(dhoom_string) \u2192 json_value`",
+      "The encoder detects arithmetic sequences, computes modal defaults, detects delta-encodable fields, identifies sparse bundles, orders fields for trailing elision, and emits records with deviation marking.",
       "### Contributing",
       "Priority: multi-model LLM benchmarks, additional edge case test suites.",
     ].join("\n\n"),
@@ -470,6 +539,9 @@ const SIDEBAR = [
     { id: "arithmetic", label: "Arithmetic Fields (@)" },
     { id: "defaults", label: "Defaults & Elision" },
     { id: "nesting", label: "Nested Bundles (>)" },
+    { id: "delta-fields", label: "Delta Fields (^)" },
+    { id: "sparse-bundles", label: "Sparse Bundles (~)" },
+    { id: "morphisms", label: "Morphisms (->)" },
     { id: "math", label: "The Mathematics" },
     { id: "using-with-llms", label: "Using with LLMs" },
     { id: "benchmarks", label: "Benchmarks" },
@@ -565,7 +637,7 @@ function NavBar({ page, setPage }) {
           })}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {!mob && <span style={{ fontSize: 11, color: "#383850", fontFamily: "monospace" }}>v0.3</span>}
+          {!mob && <span style={{ fontSize: 11, color: "#383850", fontFamily: "monospace" }}>v0.4</span>}
           <a href="https://github.com/nurdymuny/dhoom" target="_blank" rel="noopener noreferrer" style={{ color: "#505068", fontSize: 13, textDecoration: "none", display: "flex", alignItems: "center", gap: 5 }}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>{!mob && "GitHub"}</a>
           {mob && <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: "#606078", fontSize: 20, lineHeight: 1 }}>{menuOpen ? "\u2715" : "\u2630"}</button>}
         </div>
@@ -722,6 +794,9 @@ function FeatureCards() {
     { i: ":", t: "Deviation Marking", d: "Colon says \u201CI disagree.\u201D Explicit and unambiguous." },
     { i: "\u2026", t: "Trailing Elision", d: "Defaults at end \u2192 records stop early." },
     { i: ">", t: "Recursive Nesting", d: "Child bundles inherit parent name." },
+    { i: "^", t: "Delta Encoding", d: "Store differences, not absolutes. Parallel transport." },
+    { i: "~", t: "Sparse Bundles", d: "Named pairs for wide tables. Nulls vanish." },
+    { i: "\u2192", t: "Bundle Morphisms", d: "Declared foreign-key relationships between bundles." },
     { i: "{ }", t: "Self-Describing", d: "Schema is inline. No registry needed." },
   ];
   const mob = useIsMobile();
@@ -730,8 +805,8 @@ function FeatureCards() {
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 10 }}>
         {feats.map((f, i) => (
           <div key={i} style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.035)", borderRadius: 10, padding: "18px 16px" }}>
-            <span style={{ fontSize: 18, color: "#FF6030", fontFamily: "'Fira Code',monospace", fontWeight: 700 }}>{f.i}</span>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#B0B0C8", margin: "8px 0 4px" }}>{f.t}</div>
+            <span style={{ fontSize: 18, color: i >= 5 && i <= 7 ? "#E84020" : "#FF6030", fontFamily: "'Fira Code',monospace", fontWeight: 700 }}>{f.i}</span>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#B0B0C8", margin: "8px 0 4px" }}>{f.t}{i >= 5 && i <= 7 && <span style={{ fontSize: 9, marginLeft: 6, padding: "1px 5px", borderRadius: 3, background: "#FF603018", color: "#FF6030", fontWeight: 700, fontFamily: "'Fira Code',monospace", verticalAlign: "middle" }}>v0.4</span>}</div>
             <div style={{ fontSize: 12, color: "#606078", lineHeight: 1.55 }}>{f.d}</div>
           </div>
         ))}

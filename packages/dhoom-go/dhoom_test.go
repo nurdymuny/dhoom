@@ -384,3 +384,154 @@ func TestTrailingElision(t *testing.T) {
 	}
 	roundtrip(t, data)
 }
+
+// ---------------------------------------------------------------------------
+// Delta fields
+// ---------------------------------------------------------------------------
+
+func TestParseDeltaModifier(t *testing.T) {
+	fiber, err := ParseFiber("events{ts^, name}")
+	if err != nil {
+		t.Fatalf("ParseFiber failed: %v", err)
+	}
+	if fiber.Fields[0].Modifier.Type != "delta" {
+		t.Errorf("expected delta modifier, got %q", fiber.Fields[0].Modifier.Type)
+	}
+}
+
+func TestDecodeDeltaValues(t *testing.T) {
+	input := "events{name, ts^}:\nA, 1000000\nB, 50\nC, 70\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["events"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	r1 := arr[1].(map[string]interface{})
+	r2 := arr[2].(map[string]interface{})
+	if r0["ts"] != float64(1000000) {
+		t.Errorf("expected 1000000, got %v", r0["ts"])
+	}
+	if r1["ts"] != float64(1000050) {
+		t.Errorf("expected 1000050, got %v", r1["ts"])
+	}
+	if r2["ts"] != float64(1000120) {
+		t.Errorf("expected 1000120, got %v", r2["ts"])
+	}
+}
+
+func TestEncodeDeltaWhenBeneficial(t *testing.T) {
+	data := parseJSON(`{"events":[{"name":"A","ts":1000000},{"name":"B","ts":1000050},{"name":"C","ts":1000120},{"name":"D","ts":1000200},{"name":"E","ts":1000310}]}`)
+	dhoom, err := Encode(data)
+	if err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+	if !strings.Contains(dhoom, "ts^") {
+		t.Error("expected delta modifier ts^ in encoded output")
+	}
+}
+
+func TestRoundtripDelta(t *testing.T) {
+	roundtrip(t, `{"events":[{"name":"s0","ts":1000000},{"name":"s1","ts":1000050},{"name":"s2","ts":1000120},{"name":"s3","ts":1000200},{"name":"s4","ts":1000310}]}`)
+}
+
+// ---------------------------------------------------------------------------
+// Sparse bundles
+// ---------------------------------------------------------------------------
+
+func TestParseSparsePrefix(t *testing.T) {
+	fiber, err := ParseFiber("~profiles{a, b, c, d, e, f, g, h}")
+	if err != nil {
+		t.Fatalf("ParseFiber failed: %v", err)
+	}
+	if fiber.Name != "profiles" {
+		t.Errorf("expected name 'profiles', got %q", fiber.Name)
+	}
+	if !fiber.Sparse {
+		t.Error("expected Sparse to be true")
+	}
+	if len(fiber.Fields) != 8 {
+		t.Errorf("expected 8 fields, got %d", len(fiber.Fields))
+	}
+}
+
+func TestDecodeSparseRecords(t *testing.T) {
+	input := "~items{a, b, c, d, e, f, g, h}:\na:1, c:3\nb:2\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["items"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	r1 := arr[1].(map[string]interface{})
+	if r0["a"] != float64(1) {
+		t.Errorf("expected a=1, got %v", r0["a"])
+	}
+	if r0["c"] != float64(3) {
+		t.Errorf("expected c=3, got %v", r0["c"])
+	}
+	if r0["b"] != nil {
+		t.Errorf("expected b=nil, got %v", r0["b"])
+	}
+	if r1["b"] != float64(2) {
+		t.Errorf("expected b=2, got %v", r1["b"])
+	}
+}
+
+func TestEncodeSparseWhenMostlyNull(t *testing.T) {
+	fields := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+	var records []interface{}
+	for i := 0; i < 5; i++ {
+		obj := map[string]interface{}{}
+		for _, f := range fields {
+			obj[f] = nil
+		}
+		obj[fields[i%len(fields)]] = float64(i + 1)
+		records = append(records, obj)
+	}
+	data := map[string]interface{}{"sparse_data": records}
+	dhoom, err := Encode(data)
+	if err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+	if !strings.Contains(dhoom, "~sparse_data") {
+		t.Error("expected sparse prefix ~sparse_data in encoded output")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Morphism fields
+// ---------------------------------------------------------------------------
+
+func TestParseMorphismModifier(t *testing.T) {
+	fiber, err := ParseFiber("orders{id@1, user_id->users}")
+	if err != nil {
+		t.Fatalf("ParseFiber failed: %v", err)
+	}
+	if fiber.Fields[1].Modifier.Type != "morphism" {
+		t.Errorf("expected morphism modifier, got %q", fiber.Fields[1].Modifier.Type)
+	}
+	if fiber.Fields[1].Modifier.Target != "users" {
+		t.Errorf("expected target 'users', got %q", fiber.Fields[1].Modifier.Target)
+	}
+}
+
+func TestDecodeMorphismAsRegularValues(t *testing.T) {
+	input := "orders{id@1, user_id->users}:\nAlice\nBob\n"
+	result, err := Decode(input)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+	m := result.(map[string]interface{})
+	arr := m["orders"].([]interface{})
+	r0 := arr[0].(map[string]interface{})
+	r1 := arr[1].(map[string]interface{})
+	if r0["user_id"] != "Alice" {
+		t.Errorf("expected 'Alice', got %v", r0["user_id"])
+	}
+	if r1["user_id"] != "Bob" {
+		t.Errorf("expected 'Bob', got %v", r1["user_id"])
+	}
+}

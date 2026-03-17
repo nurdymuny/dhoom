@@ -19,10 +19,11 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export interface Modifier {
-  type: "arithmetic" | "default" | "nested";
+  type: "arithmetic" | "default" | "nested" | "delta" | "morphism";
   start?: JsonValue;
   step?: number;
   defaultValue?: JsonValue;
+  target?: string;
 }
 
 export interface FieldDecl {
@@ -33,6 +34,7 @@ export interface FieldDecl {
 export interface Fiber {
   name?: string;
   fields: FieldDecl[];
+  sparse?: boolean;
 }
 
 export class DhoomError extends Error {
@@ -103,6 +105,19 @@ function arithmeticValue(start: JsonValue, step: number, i: number): JsonValue {
 // ---------------------------------------------------------------------------
 
 function parseFieldDecl(token: string): FieldDecl {
+  // Morphism: field->target (must check before nested >)
+  const arrowIdx = token.indexOf("->");
+  if (arrowIdx !== -1) {
+    const name = token.slice(0, arrowIdx);
+    const target = token.slice(arrowIdx + 2);
+    return { name, modifier: { type: "morphism", target } };
+  }
+
+  // Delta: field^
+  if (token.endsWith("^")) {
+    return { name: token.slice(0, -1), modifier: { type: "delta" } };
+  }
+
   // Nested: field>
   if (token.endsWith(">")) {
     return { name: token.slice(0, -1), modifier: { type: "nested" } };
@@ -146,7 +161,19 @@ export function parseFiber(input: string): Fiber {
     throw new DhoomError("Missing braces in fiber header");
   }
 
-  const name = braceStart > 0 ? input.slice(0, braceStart).trim() : undefined;
+  const rawName = braceStart > 0 ? input.slice(0, braceStart).trim() : undefined;
+  let sparse = false;
+  let name: string | undefined;
+
+  if (rawName) {
+    if (rawName.startsWith("~")) {
+      sparse = true;
+      name = rawName.slice(1).trim() || undefined;
+    } else {
+      name = rawName;
+    }
+  }
+
   const fieldsStr = input.slice(braceStart + 1, braceEnd);
   const fields = fieldsStr
     .split(",")
@@ -154,7 +181,7 @@ export function parseFiber(input: string): Fiber {
     .filter((s) => s.length > 0)
     .map(parseFieldDecl);
 
-  return { name: name || undefined, fields };
+  return { name: name || undefined, fields, sparse: sparse || undefined };
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +242,7 @@ function decodeFlatRecords(body: string, fiber: Fiber): JsonValue[] {
   const recFields = recordFields(fiber);
   const records: JsonValue[] = [];
   let ordinal = 0;
+  const deltaAccum = new Map<string, number>();
 
   for (const line of body.split("\n")) {
     const trimmed = line.trim();
@@ -235,17 +263,76 @@ function decodeFlatRecords(body: string, fiber: Fiber): JsonValue[] {
       const rf = recFields[j];
       if (j < raw.length) {
         const val = raw[j];
+        let resolved: JsonValue;
         if (val === "") {
-          obj[rf.name] = rf.modifier?.type === "default" ? rf.modifier.defaultValue! : "";
+          resolved = rf.modifier?.type === "default" ? rf.modifier.defaultValue! : "";
         } else if (val.startsWith(":")) {
-          obj[rf.name] = coerce(val.slice(1));
+          resolved = coerce(val.slice(1));
         } else {
-          obj[rf.name] = coerce(val);
+          resolved = coerce(val);
         }
+
+        // Delta accumulation
+        if (rf.modifier?.type === "delta" && typeof resolved === "number") {
+          if (ordinal === 0) {
+            deltaAccum.set(rf.name, resolved);
+          } else {
+            const prev = deltaAccum.get(rf.name) ?? 0;
+            resolved = prev + resolved;
+            deltaAccum.set(rf.name, resolved);
+          }
+        }
+
+        obj[rf.name] = resolved;
       } else {
         // Trailing elision
         if (rf.modifier?.type === "default") {
           obj[rf.name] = rf.modifier.defaultValue!;
+        }
+      }
+    }
+
+    records.push(obj);
+    ordinal++;
+  }
+
+  return records;
+}
+
+function decodeSparseRecords(body: string, fiber: Fiber): JsonValue[] {
+  const records: JsonValue[] = [];
+  let ordinal = 0;
+
+  for (const line of body.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+
+    const obj: Record<string, JsonValue> = {};
+
+    // Arithmetic fields
+    for (const fd of fiber.fields) {
+      if (fd.modifier?.type === "arithmetic") {
+        obj[fd.name] = arithmeticValue(fd.modifier.start!, fd.modifier.step ?? 1, ordinal);
+      }
+    }
+
+    // Parse name:value pairs
+    const pairs = splitRecordFields(trimmed);
+    for (const pair of pairs) {
+      const colonIdx = pair.indexOf(":");
+      if (colonIdx === -1) continue;
+      const fieldName = pair.slice(0, colonIdx).trim();
+      const rawValue = pair.slice(colonIdx + 1).trim();
+      obj[fieldName] = coerce(rawValue);
+    }
+
+    // Fill defaults for missing fields
+    for (const fd of fiber.fields) {
+      if (!(fd.name in obj)) {
+        if (fd.modifier?.type === "default") {
+          obj[fd.name] = fd.modifier.defaultValue!;
+        } else if (fd.modifier?.type !== "arithmetic") {
+          obj[fd.name] = null;
         }
       }
     }
@@ -270,9 +357,14 @@ function decodeBundle(input: string): { name?: string; value: JsonValue } {
   const recFields = recordFields(fiber);
   const hasNested = recFields.some((f) => f.modifier?.type === "nested");
 
-  const records = hasNested
-    ? decodeNestedRecords(body, fiber)
-    : decodeFlatRecords(body, fiber);
+  let records: JsonValue[];
+  if (fiber.sparse) {
+    records = decodeSparseRecords(body, fiber);
+  } else if (hasNested) {
+    records = decodeNestedRecords(body, fiber);
+  } else {
+    records = decodeFlatRecords(body, fiber);
+  }
 
   return { name: fiber.name, value: records };
 }
@@ -430,6 +522,16 @@ function jsonEqual(a: JsonValue, b: JsonValue): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function detectDelta(values: JsonValue[]): boolean {
+  if (values.length < 3) return false;
+  if (!values.every((v) => typeof v === "number" && Number.isInteger(v))) return false;
+  const nums = values as number[];
+  const deltas = nums.map((v, i) => (i === 0 ? v : v - nums[i - 1]));
+  const absLen = nums.reduce((sum, v) => sum + String(v).length, 0);
+  const deltaLen = deltas.reduce((sum, d) => sum + String(d).length, 0);
+  return deltaLen < absLen * 0.7;
+}
+
 function encodeBundle(
   name: string,
   records: Record<string, JsonValue>[],
@@ -444,6 +546,7 @@ function encodeBundle(
   const keys = Object.keys(records[0]);
   const orderedFields: FieldDecl[] = [];
   const arithmeticKeys = new Set<string>();
+  const deltaKeys = new Set<string>();
   const defaultKeys = new Map<string, JsonValue>();
   const nestedKeys = new Set<string>();
   const variableKeys: string[] = [];
@@ -472,6 +575,12 @@ function encodeBundle(
       continue;
     }
 
+    // Check delta (integer sequences where deltas are significantly shorter)
+    if (detectDelta(values)) {
+      deltaKeys.add(key);
+      continue;
+    }
+
     // Check modal default
     const modal = findModalDefault(values);
     if (modal && modal.count > records.length / 2) {
@@ -483,7 +592,7 @@ function encodeBundle(
   }
 
   // Ensure at least one field produces record body content
-  if (variableKeys.length === 0 && nestedKeys.size === 0) {
+  if (variableKeys.length === 0 && deltaKeys.size === 0 && nestedKeys.size === 0) {
     for (const key of keys) {
       if (arithmeticKeys.has(key)) {
         arithmeticKeys.delete(key);
@@ -498,6 +607,11 @@ function encodeBundle(
         break;
       }
     }
+  }
+
+  // Delta fields
+  for (const key of deltaKeys) {
+    orderedFields.push({ name: key, modifier: { type: "delta" } });
   }
 
   // Variable fields
@@ -520,8 +634,25 @@ function encodeBundle(
     orderedFields.push({ name: key, modifier: { type: "nested" } });
   }
 
+  // Check sparsity — use sparse mode when ≥8 fields and >75% null/empty
+  const nonArithKeys = keys.filter((k) => !arithmeticKeys.has(k) && !nestedKeys.has(k));
+  let useSparse = false;
+  if (nonArithKeys.length >= 8) {
+    let nullCount = 0;
+    let totalCells = 0;
+    for (const r of records) {
+      for (const k of nonArithKeys) {
+        totalCells++;
+        const v = r[k];
+        if (v === null || v === undefined || v === "") nullCount++;
+      }
+    }
+    useSparse = nullCount > totalCells * 0.75;
+  }
+
   // Emit header
-  let out = `${prefix}${name}{`;
+  const sparsePrefix = useSparse ? "~" : "";
+  let out = `${prefix}${sparsePrefix}${name}{`;
   out += orderedFields
     .map((fd) => {
       let s = fd.name;
@@ -532,6 +663,10 @@ function encodeBundle(
         s += `|${valueTodhoom(fd.modifier.defaultValue!)}`;
       } else if (fd.modifier?.type === "nested") {
         s += ">";
+      } else if (fd.modifier?.type === "delta") {
+        s += "^";
+      } else if (fd.modifier?.type === "morphism") {
+        s += `->${fd.modifier.target}`;
       }
       return s;
     })
@@ -540,6 +675,29 @@ function encodeBundle(
 
   // Emit records
   const recFields = orderedFields.filter((f) => f.modifier?.type !== "arithmetic");
+
+  if (useSparse) {
+    // Sparse mode: emit field:value pairs for non-null values
+    for (const record of records) {
+      const pairs: string[] = [];
+      for (const rf of recFields) {
+        if (rf.modifier?.type === "nested") continue;
+        const val = record[rf.name];
+        if (val !== null && val !== undefined && val !== "") {
+          pairs.push(`${rf.name}:${valueTodhoom(val)}`);
+        }
+      }
+      if (pairs.length === 0) {
+        const firstField = recFields.find((f) => f.modifier?.type !== "nested");
+        if (firstField) pairs.push(`${firstField.name}:null`);
+      }
+      out += `${prefix}${pairs.join(", ")}\n`;
+    }
+    return out;
+  }
+
+  let recordIdx = 0;
+  const prevDelta = new Map<string, number>();
 
   for (const record of records) {
     const values: string[] = [];
@@ -555,7 +713,19 @@ function encodeBundle(
       }
 
       const val = record[rf.name];
-      if (rf.modifier?.type === "default") {
+
+      if (rf.modifier?.type === "delta") {
+        const numVal = typeof val === "number" ? val : 0;
+        if (recordIdx === 0) {
+          prevDelta.set(rf.name, numVal);
+          values.push(valueTodhoom(numVal));
+        } else {
+          const prev = prevDelta.get(rf.name) ?? 0;
+          const delta = numVal - prev;
+          prevDelta.set(rf.name, numVal);
+          values.push(valueTodhoom(delta));
+        }
+      } else if (rf.modifier?.type === "default") {
         if (jsonEqual(val, rf.modifier.defaultValue!)) {
           values.push("");
         } else {
@@ -581,6 +751,8 @@ function encodeBundle(
     } else {
       out += "\n";
     }
+
+    recordIdx++;
   }
 
   return out;
@@ -630,6 +802,7 @@ function buildFiberMeta(
   const defaultKeys = new Map<string, JsonValue>();
   const nestedKeys = new Set<string>();
   const variableKeys: string[] = [];
+  const deltaKeys = new Set<string>();
 
   for (const key of keys) {
     const values = records.map((r) => r[key]);
@@ -653,6 +826,11 @@ function buildFiberMeta(
       continue;
     }
 
+    if (detectDelta(values)) {
+      deltaKeys.add(key);
+      continue;
+    }
+
     const modal = findModalDefault(values);
     if (modal && modal.count > records.length / 2) {
       defaultKeys.set(key, modal.value);
@@ -663,7 +841,7 @@ function buildFiberMeta(
   }
 
   // Ensure at least one field produces record body content
-  if (variableKeys.length === 0 && nestedKeys.size === 0) {
+  if (variableKeys.length === 0 && deltaKeys.size === 0 && nestedKeys.size === 0) {
     for (const key of keys) {
       if (arithmeticKeys.has(key)) {
         arithmeticKeys.delete(key);
@@ -678,6 +856,10 @@ function buildFiberMeta(
         break;
       }
     }
+  }
+
+  for (const key of deltaKeys) {
+    orderedFields.push({ name: key, modifier: { type: "delta" } });
   }
 
   for (const key of variableKeys) {
@@ -708,6 +890,10 @@ function buildFiberMeta(
         s += `|${valueTodhoom(fd.modifier.defaultValue!)}`;
       } else if (fd.modifier?.type === "nested") {
         s += ">";
+      } else if (fd.modifier?.type === "delta") {
+        s += "^";
+      } else if (fd.modifier?.type === "morphism") {
+        s += `->${fd.modifier.target}`;
       }
       return s;
     })
@@ -724,6 +910,8 @@ function buildFiberMeta(
 function encodeRecordLine(
   record: Record<string, JsonValue>,
   recFields: FieldDecl[],
+  recordIdx?: number,
+  prevDelta?: Map<string, number>,
 ): string {
   const values: string[] = [];
 
@@ -731,7 +919,18 @@ function encodeRecordLine(
     if (rf.modifier?.type === "nested") continue;
 
     const val = record[rf.name];
-    if (rf.modifier?.type === "default") {
+
+    if (rf.modifier?.type === "delta" && prevDelta && typeof val === "number") {
+      if ((recordIdx ?? 0) === 0) {
+        prevDelta.set(rf.name, val);
+        values.push(valueTodhoom(val));
+      } else {
+        const prev = prevDelta.get(rf.name) ?? 0;
+        const delta = val - prev;
+        prevDelta.set(rf.name, val);
+        values.push(valueTodhoom(delta));
+      }
+    } else if (rf.modifier?.type === "default") {
       values.push(jsonEqual(val, rf.modifier.defaultValue!) ? "" : `:${valueTodhoom(val)}`);
     } else {
       values.push(valueTodhoom(val));
@@ -778,8 +977,11 @@ export function* encodeLines(value: JsonValue): Generator<string> {
   const { header, recFields } = buildFiberMeta(name, records);
   yield header;
 
-  for (const record of records) {
-    yield encodeRecordLine(record, recFields);
+  const hasDelta = recFields.some((f) => f.modifier?.type === "delta");
+  const prevDelta = hasDelta ? new Map<string, number>() : undefined;
+
+  for (let i = 0; i < records.length; i++) {
+    yield encodeRecordLine(records[i], recFields, i, prevDelta);
   }
 }
 
