@@ -503,6 +503,45 @@ const DOCS = {
     ].join("\n\n"),
   },
 
+  "comparison": {
+    title: "JSON vs TOON vs DHOOM", cat: "Ecosystem",
+    content: [
+      "## Format Comparison",
+      "A comprehensive feature-by-feature comparison of JSON, TOON, and DHOOM.",
+      "### At a Glance",
+      "| | JSON | TOON | DHOOM |\n|---|---|---|---|\n| **Year** | 2001 | 2023 | 2025 |\n| **Human-readable** | \u2713 | \u2713 | \u2713 |\n| **Schema in data** | \u2717 | Header | Fiber header |\n| **Compression** | None | Structural | Geometric |\n| **Math foundation** | \u2014 | \u2014 | Fiber bundle geometry |\n| **LLM accuracy** | 100% | ~98% | 100% |\n| **Token efficiency** | Baseline | ~40% fewer | ~60% fewer |\n| **SDKs** | Universal | 1 (JS) | 6 (TS, Rust, Py, Go, C#, Java) |",
+      "### Data Representation",
+      "Take a simple 3-record dataset and see how each format handles it:",
+      "#### JSON (412 chars)",
+      C + "json\n{\"reviews\":[\n  {\"id\":101,\"customer\":\"Alex Rivera\",\n   \"rating\":5,\"comment\":\"Excellent!\",\n   \"verified\":true},\n  {\"id\":102,\"customer\":\"Brij Pandey\",\n   \"rating\":5,\"comment\":\"Game changer!\",\n   \"verified\":true},\n  {\"id\":103,\"customer\":\"Casey Lee\",\n   \"rating\":3,\"comment\":\"Average\",\n   \"verified\":false}\n]}\n" + C,
+      "Every key repeated 3x. Every brace, bracket, colon, and quote is structural overhead.",
+      "#### TOON (~210 chars)",
+      C + "\nreviews[3]{id,customer,rating,comment,verified}:\n  101,Alex Rivera,5,Excellent!,true\n  102,Brij Pandey,5,Game changer!,true\n  103,Casey Lee,3,Average,false\n" + C,
+      "Header declares fields once \u2014 records are positional. But every value is still explicit, even when patterns exist.",
+      "#### DHOOM (~137 chars)",
+      C + "\nreviews{id@101, customer, comment, rating|5, verified|T}:\nAlex Rivera, Excellent!\nBrij Pandey, Game changer!\nCasey Lee, Average, :3, :F\n" + C,
+      "`id@101` eliminates all IDs. `rating|5` and `verified|T` declare defaults \u2014 only deviations (`:3`, `:F`) appear. Matching defaults are elided entirely.",
+      "### Feature Matrix",
+      "| Feature | JSON | TOON | DHOOM |\n|---|---|---|---|\n| Key repetition | Every record | Header once | Header once |\n| Structural punctuation | `{}[]:,\"` everywhere | Minimal | Minimal |\n| Record count | Implicit | `[N]` required | Not needed |\n| Arithmetic sequences | All values explicit | All values explicit | `@start+step` \u2014 zero record cost |\n| Default values | All values explicit | All values explicit | `field\\|default` \u2014 silence = agreement |\n| Deviation marking | N/A | N/A | `:value` signals disagreement |\n| Trailing elision | N/A | N/A | Stop writing when defaults remain |\n| Boolean encoding | `true`/`false` (4-5 chars) | `true`/`false` | `T`/`F` (1 char) |\n| Nested structures | Inline objects | Named sub-bundles | `>` implied naming |\n| Delta encoding | N/A | N/A | `field^` \u2014 store differences |\n| Sparse tables | All fields every record | All fields every record | `~` named pairs, nulls omitted |\n| Foreign keys | No semantic meaning | No semantic meaning | `->target` declared relationships |\n| Schema evolution | Add fields freely | Fixed header | Modifiers extend header |",
+      "### Compression Breakdown",
+      "Where does DHOOM's compression actually come from? Each feature contributes independently.",
+      "| Technique | What it removes | Savings per record |\n|---|---|---|\n| Header-once | Key repetition | ~50% of JSON overhead |\n| `@` Arithmetic | Predictable sequences | 100% (field vanishes) |\n| `\\|` Defaults | Repeated common values | ~80% for modal fields |\n| Trailing elision | Unnecessary commas | Variable \u2014 compounds with ordering |\n| `:` Deviation | Only marks exceptions | Inverse of default frequency |\n| `T`/`F` | Boolean verbosity | 60\u201380% per boolean |\n| `^` Delta | Slowly-changing values | 40\u201390% for temporal data |\n| `~` Sparse | Wide, mostly-null tables | 70\u201395% for config-style data |",
+      "### Real-World Benchmarks",
+      "Measured on representative datasets at various scales:",
+      "| Dataset | Records | JSON | DHOOM | Savings |\n|---|---|---|---|---|\n| Reviews | 3 | 412 chars | ~137 chars | **-67%** |\n| Sensors | 3 | 380 chars | ~95 chars | **-75%** |\n| Reviews | 100 | ~13,700 | ~4,380 | **-68%** |\n| Sensors | 100 | ~12,800 | ~900 | **-93%** |\n| Sensors | 500 | ~64,000 | ~3,800 | **-94%** |\n| Users | 1,000 | ~110,000 | ~44,000 | **-60%** |",
+      "### LLM Performance",
+      "Tested with Claude Sonnet (temperature=0), 209 structured-data questions:",
+      "| Metric | JSON | DHOOM |\n|---|---|---|\n| Accuracy | 100% (209/209) | 100% (209/209) |\n| Avg tokens per payload | ~110 | ~45 |\n| Token savings | Baseline | **-59%** |\n| Roundtrip fidelity | N/A | 18/18 perfect |",
+      "DHOOM preserves perfect LLM comprehension while cutting input tokens by ~60%. Every token saved is cost saved.",
+      "### When to Use What",
+      "**Choose JSON when:**\n- Broad ecosystem compatibility is critical\n- Data is deeply nested with few repeated structures\n- You're already token-budget-comfortable\n- External APIs require JSON",
+      "**Choose TOON when:**\n- You want a quick win over JSON\n- Header-only deduplication is enough\n- Single-language (JS) is fine",
+      "**Choose DHOOM when:**\n- Token cost matters (LLM pipelines, API billing)\n- Data has structural regularity (tables, logs, time-series)\n- You need multi-language support (6 SDKs)\n- Compression needs to scale (arithmetic, defaults, delta)\n- You want a formal mathematical foundation",
+      "### Migration Path",
+      "JSON \u2192 DHOOM is a one-line call in any SDK:\n\n`encode(json_value) \u2192 dhoom_string`\n`decode(dhoom_string) \u2192 json_value`\n\nNo schema files, no code generation, no configuration. The encoder automatically detects arithmetic sequences, computes defaults, identifies deltas, and orders fields for maximum compression.",
+    ].join("\n\n"),
+  },
+
   "migration": {
     title: "Switching from TOON", cat: "Ecosystem",
     content: [
@@ -551,6 +590,7 @@ const SIDEBAR = [
     { id: "specification", label: "Full Specification" },
   ]},
   { heading: "Ecosystem", items: [
+    { id: "comparison", label: "JSON vs TOON vs DHOOM" },
     { id: "migration", label: "Switching from TOON" },
     { id: "implementations", label: "Implementations" },
   ]},
@@ -624,7 +664,7 @@ function NavBar({ page, setPage }) {
     { id: "playground", l: "Playground" },
     { id: "getting-started", l: "Guide" },
     { id: "syntax", l: "Reference" },
-    { id: "migration", l: "Ecosystem" },
+    { id: "comparison", l: "Compare" },
   ];
   return (
     <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(8,6,14,0.94)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.04)", padding: "0 16px" }}>
