@@ -1,0 +1,39 @@
+{
+  "name": "@dhoom-format/cli",
+  "version": "0.3.0",
+  "description": "CLI for DHOOM — convert JSON to DHOOM and back, with token stats",
+  "type": "module",
+  "bin": {
+    "dhoom": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "pretest": "tsc",
+    "test": "node --test dist/cli.test.js"
+  },
+  "keywords": [
+    "cli",
+    "serialization",
+    "json",
+    "dhoom",
+    "llm",
+    "tokens"
+  ],
+  "author": "Bee Rosa Davis <bee_davis@alumni.brown.edu>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nurdymuny/dhoom",
+    "directory": "packages/dhoom-cli"
+  },
+  "dependencies": {
+    "@dhoom-format/dhoom": "file:../dhoom-ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.5.0"
+  }
+}

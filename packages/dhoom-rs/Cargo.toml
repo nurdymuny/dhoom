@@ -1,0 +1,23 @@
+[package]
+name = "dhoom"
+version = "0.3.0"
+edition = "2021"
+authors = ["Bee Rosa Davis <bee_davis@alumni.brown.edu>"]
+description = "DHOOM: Davis Human-readable Optimized Object Markup — parser and encoder"
+license = "MIT"
+repository = "https://github.com/nurdymuny/dhoom"
+keywords = ["serialization", "json", "parser", "llm", "geometry"]
+categories = ["encoding", "parser-implementations"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
+
+[[bench]]
+name = "roundtrip"
+harness = false

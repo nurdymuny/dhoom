@@ -1,0 +1,32 @@
+target/
+node_modules/
+dist/
+*.pyc
+__pycache__/
+.env
+.DS_Store
+DHOOM-ACCURACY-FIX-SPEC.md
+Cargo.lock
+*.zip
+*.sln
+
+# Intermediate/test benchmark results
+benchmarks/llm-results.json
+benchmarks/llm-results-fix.json
+benchmarks/llm-results-*-test.json
+benchmarks/llm-results-*-smoke.json
+benchmarks/llm-results-json.json
+benchmarks/llm-results-toon.json
+
+# Orphaned dev files
+dhoom-dev.jsx
+
+# .NET
+bin/
+obj/
+
+# Java
+packages/dhoom-java/build/
+
+# Python eggs
+*.egg-info/

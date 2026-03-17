@@ -1,0 +1,7 @@
+order{id, customer, total, items>, shipping>}:
+ORD-7891, Diana Prince, 149.99,
+  {sku@A100, name, qty, price}:
+  Widget, 2, 49.99
+  Gadget, 1, 50.01,
+  {method, address}:
+  express, 1234 Elm St

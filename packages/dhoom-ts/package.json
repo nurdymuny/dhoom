@@ -1,0 +1,44 @@
+{
+  "name": "@dhoom-format/dhoom",
+  "version": "0.3.0",
+  "description": "DHOOM: Davis Human-readable Optimized Object Markup — parser and encoder",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/dhoom.test.js",
+    "pretest": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "keywords": [
+    "serialization",
+    "json",
+    "parser",
+    "llm",
+    "geometry",
+    "dhoom"
+  ],
+  "author": "Bee Rosa Davis <bee_davis@alumni.brown.edu>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nurdymuny/dhoom",
+    "directory": "packages/dhoom-ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.5.0"
+  }
+}

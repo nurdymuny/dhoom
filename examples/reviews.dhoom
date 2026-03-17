@@ -1,0 +1,4 @@
+reviews{id@101, customer, comment, rating|5, verified|T}:
+Alex Rivera, Excellent!
+Brij Pandey, Game changer!
+Casey Lee, Average, :3, :F

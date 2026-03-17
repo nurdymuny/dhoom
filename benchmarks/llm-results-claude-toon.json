@@ -1,0 +1,2346 @@
+[
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What is the id of customer Alex Rivera's review?",
+    "expected": [
+      "101"
+    ],
+    "got": "101",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What rating did Alex Rivera give?",
+    "expected": [
+      "5"
+    ],
+    "got": "5",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What comment did Alex Rivera leave?",
+    "expected": [
+      "Excellent!",
+      "Excellent"
+    ],
+    "got": "Excellent!",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What is the id of customer Brij Pandey's review?",
+    "expected": [
+      "102"
+    ],
+    "got": "102",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What rating did Brij Pandey give?",
+    "expected": [
+      "5"
+    ],
+    "got": "5",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What comment did Brij Pandey leave?",
+    "expected": [
+      "Game changer!",
+      "Game changer"
+    ],
+    "got": "Game changer!",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What is the id of customer Casey Lee's review?",
+    "expected": [
+      "103"
+    ],
+    "got": "103",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What rating did Casey Lee give?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "DL",
+    "question": "What comment did Casey Lee leave?",
+    "expected": [
+      "Average"
+    ],
+    "got": "Average",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "BC",
+    "question": "Is Alex Rivera's review verified?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "BC",
+    "question": "Is Brij Pandey's review verified?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "BC",
+    "question": "Is Casey Lee's review verified?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "RL",
+    "question": "Which customer has review id 101?",
+    "expected": [
+      "Alex Rivera"
+    ],
+    "got": "Alex Rivera",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "RL",
+    "question": "Which customer has review id 102?",
+    "expected": [
+      "Brij Pandey"
+    ],
+    "got": "Brij Pandey",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "RL",
+    "question": "Which customer has review id 103?",
+    "expected": [
+      "Casey Lee"
+    ],
+    "got": "Casey Lee",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "RL",
+    "question": "Which customer left the comment 'Game changer!'?",
+    "expected": [
+      "Brij Pandey"
+    ],
+    "got": "Brij Pandey",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "RL",
+    "question": "Which customer has a rating of 3?",
+    "expected": [
+      "Casey Lee"
+    ],
+    "got": "Casey Lee",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CF",
+    "question": "What is the comment for the review with id 102?",
+    "expected": [
+      "Game changer!",
+      "Game changer"
+    ],
+    "got": "Game changer!",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CF",
+    "question": "What is the verification status of the review with rating 3?",
+    "expected": [
+      "false",
+      "not verified",
+      "unverified",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CF",
+    "question": "What is the customer name for the review with id 101?",
+    "expected": [
+      "Alex Rivera"
+    ],
+    "got": "Alex Rivera",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CF",
+    "question": "What is the id of the unverified review?",
+    "expected": [
+      "103"
+    ],
+    "got": "103",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CF",
+    "question": "What rating did the customer who commented 'Average' give?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CT",
+    "question": "How many reviews have a rating of 5?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CT",
+    "question": "How many reviews are verified?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CT",
+    "question": "How many reviews are not verified?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CT",
+    "question": "How many total reviews are there?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "CT",
+    "question": "How many reviews have a rating above 3?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "LS",
+    "question": "List all customer names, comma-separated.",
+    "expected": [
+      "Alex Rivera, Brij Pandey, Casey Lee"
+    ],
+    "got": "Alex Rivera, Brij Pandey, Casey Lee",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "LS",
+    "question": "List all review ids, comma-separated.",
+    "expected": [
+      "101, 102, 103"
+    ],
+    "got": "101, 102, 103",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "LS",
+    "question": "List all ratings, comma-separated.",
+    "expected": [
+      "5, 5, 3"
+    ],
+    "got": "5, 5, 3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "LS",
+    "question": "List all comments, comma-separated.",
+    "expected": [
+      "Excellent!, Game changer!, Average"
+    ],
+    "got": "Excellent!, Game changer!, Average",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "AG",
+    "question": "What is the highest rating?",
+    "expected": [
+      "5"
+    ],
+    "got": "5",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "AG",
+    "question": "What is the lowest rating?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "AG",
+    "question": "What is the sum of all review ids?",
+    "expected": [
+      "306"
+    ],
+    "got": "306",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "EX",
+    "question": "Is there a review with a rating of 1?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "EX",
+    "question": "Is there a verified review with rating 5?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "EX",
+    "question": "Is there a review from a customer named 'Dana Kim'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "FT",
+    "question": "Which customers gave a rating of 5? List comma-separated.",
+    "expected": [
+      "Alex Rivera, Brij Pandey"
+    ],
+    "got": "Alex Rivera, Brij Pandey",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "FT",
+    "question": "Which review ids are verified? List comma-separated.",
+    "expected": [
+      "101, 102"
+    ],
+    "got": "101, 102",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "FT",
+    "question": "Which customers are not verified? List comma-separated.",
+    "expected": [
+      "Casey Lee"
+    ],
+    "got": "Casey Lee",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "BC",
+    "question": "Is review id 101 verified?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Customer Reviews",
+    "category": "BC",
+    "question": "Is review id 103 verified?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the sensor_id of the first reading?",
+    "expected": [
+      "T-001"
+    ],
+    "got": "T-001",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the timestamp of sensor T-001?",
+    "expected": [
+      "1710000000"
+    ],
+    "got": "1710000000",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the value of sensor T-001?",
+    "expected": [
+      "22.4"
+    ],
+    "got": "22.4",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the status of sensor T-001?",
+    "expected": [
+      "normal"
+    ],
+    "got": "normal",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the unit of sensor T-001?",
+    "expected": [
+      "celsius"
+    ],
+    "got": "celsius",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the timestamp of sensor T-002?",
+    "expected": [
+      "1710000060"
+    ],
+    "got": "1710000060",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the value of sensor T-002?",
+    "expected": [
+      "23.1"
+    ],
+    "got": "23.1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the status of sensor T-002?",
+    "expected": [
+      "normal"
+    ],
+    "got": "normal",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the unit of sensor T-002?",
+    "expected": [
+      "celsius"
+    ],
+    "got": "celsius",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the timestamp of sensor T-003?",
+    "expected": [
+      "1710000120"
+    ],
+    "got": "1710000120",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the value of sensor T-003?",
+    "expected": [
+      "45.8"
+    ],
+    "got": "45.8",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "DL",
+    "question": "What is the status of sensor T-003?",
+    "expected": [
+      "alert"
+    ],
+    "got": "alert",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "RL",
+    "question": "Which sensor has value 22.4?",
+    "expected": [
+      "T-001"
+    ],
+    "got": "T-001",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "RL",
+    "question": "Which sensor has value 45.8?",
+    "expected": [
+      "T-003"
+    ],
+    "got": "T-003",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "RL",
+    "question": "Which sensor has status 'alert'?",
+    "expected": [
+      "T-003"
+    ],
+    "got": "T-003",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "RL",
+    "question": "Which sensor has timestamp 1710000060?",
+    "expected": [
+      "T-002"
+    ],
+    "got": "T-002",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CF",
+    "question": "What is the value for the sensor with status 'alert'?",
+    "expected": [
+      "45.8"
+    ],
+    "got": "45.8",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CF",
+    "question": "What is the status of the sensor with value 23.1?",
+    "expected": [
+      "normal"
+    ],
+    "got": "normal",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CF",
+    "question": "What is the sensor_id with the highest value?",
+    "expected": [
+      "T-003"
+    ],
+    "got": "T-003",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CF",
+    "question": "What is the timestamp of the sensor with value 22.4?",
+    "expected": [
+      "1710000000"
+    ],
+    "got": "1710000000",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CF",
+    "question": "What unit does sensor T-003 use?",
+    "expected": [
+      "celsius"
+    ],
+    "got": "celsius",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CT",
+    "question": "How many sensors have status 'normal'?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CT",
+    "question": "How many sensors have status 'alert'?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CT",
+    "question": "How many total readings are there?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CT",
+    "question": "How many sensors have value above 30?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "CT",
+    "question": "How many sensors use celsius as unit?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "LS",
+    "question": "List all sensor ids, comma-separated.",
+    "expected": [
+      "T-001, T-002, T-003"
+    ],
+    "got": "T-001, T-002, T-003",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "LS",
+    "question": "List all sensor values, comma-separated.",
+    "expected": [
+      "22.4, 23.1, 45.8"
+    ],
+    "got": "22.4, 23.1, 45.8",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "LS",
+    "question": "List all sensor statuses, comma-separated.",
+    "expected": [
+      "normal, normal, alert"
+    ],
+    "got": "normal, normal, alert",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "LS",
+    "question": "List all timestamps, comma-separated.",
+    "expected": [
+      "1710000000, 1710000060, 1710000120"
+    ],
+    "got": "1710000000, 1710000060, 1710000120",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "AG",
+    "question": "What is the highest sensor value?",
+    "expected": [
+      "45.8"
+    ],
+    "got": "45.8",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "AG",
+    "question": "What is the lowest sensor value?",
+    "expected": [
+      "22.4"
+    ],
+    "got": "22.4",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "AG",
+    "question": "What is the earliest timestamp?",
+    "expected": [
+      "1710000000"
+    ],
+    "got": "1710000000",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "AG",
+    "question": "What is the latest timestamp?",
+    "expected": [
+      "1710000120"
+    ],
+    "got": "1710000120",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "EX",
+    "question": "Is there a sensor with value above 40?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "EX",
+    "question": "Is there a sensor with status 'warning'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "EX",
+    "question": "Is there a sensor with id 'T-004'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "FT",
+    "question": "Which sensors have status 'normal'? List comma-separated.",
+    "expected": [
+      "T-001, T-002"
+    ],
+    "got": "T-001, T-002",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "FT",
+    "question": "Which sensors have value below 25? List comma-separated.",
+    "expected": [
+      "T-001, T-002"
+    ],
+    "got": "T-001, T-002",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "FT",
+    "question": "Which sensor ids have value above 30? List comma-separated.",
+    "expected": [
+      "T-003"
+    ],
+    "got": "T-003",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "BC",
+    "question": "Does sensor T-001 have status 'normal'?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Sensor Readings",
+    "category": "BC",
+    "question": "Does sensor T-003 have status 'normal'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Dana Kim's user id?",
+    "expected": [
+      "201"
+    ],
+    "got": "201",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Dana Kim's email?",
+    "expected": [
+      "dana@example.com"
+    ],
+    "got": "dana@example.com",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Dana Kim's role?",
+    "expected": [
+      "admin"
+    ],
+    "got": "admin",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "BC",
+    "question": "Is Dana Kim active?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Eli Rosenberg's user id?",
+    "expected": [
+      "202"
+    ],
+    "got": "202",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Eli Rosenberg's email?",
+    "expected": [
+      "eli@example.com"
+    ],
+    "got": "eli@example.com",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Eli Rosenberg's role?",
+    "expected": [
+      "editor"
+    ],
+    "got": "editor",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "BC",
+    "question": "Is Eli Rosenberg active?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Farah Nassar's user id?",
+    "expected": [
+      "203"
+    ],
+    "got": "203",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Farah Nassar's email?",
+    "expected": [
+      "farah@example.com"
+    ],
+    "got": "farah@example.com",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "DL",
+    "question": "What is Farah Nassar's role?",
+    "expected": [
+      "viewer"
+    ],
+    "got": "viewer",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "BC",
+    "question": "Is Farah Nassar active?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "RL",
+    "question": "Which user has id 201?",
+    "expected": [
+      "Dana Kim"
+    ],
+    "got": "Dana Kim",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "RL",
+    "question": "Which user has id 202?",
+    "expected": [
+      "Eli Rosenberg"
+    ],
+    "got": "Eli Rosenberg",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "RL",
+    "question": "Which user has id 203?",
+    "expected": [
+      "Farah Nassar"
+    ],
+    "got": "Farah Nassar",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "RL",
+    "question": "Which user has role 'admin'?",
+    "expected": [
+      "Dana Kim"
+    ],
+    "got": "Dana Kim",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "RL",
+    "question": "Which user has email 'eli@example.com'?",
+    "expected": [
+      "Eli Rosenberg"
+    ],
+    "got": "Eli Rosenberg",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CF",
+    "question": "What is the role of user with id 201?",
+    "expected": [
+      "admin"
+    ],
+    "got": "admin",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CF",
+    "question": "What is the email of the admin user?",
+    "expected": [
+      "dana@example.com"
+    ],
+    "got": "dana@example.com",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CF",
+    "question": "What is the id of the viewer?",
+    "expected": [
+      "203"
+    ],
+    "got": "203",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CF",
+    "question": "What is the name of user with email 'farah@example.com'?",
+    "expected": [
+      "Farah Nassar"
+    ],
+    "got": "Farah Nassar",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CF",
+    "question": "What is the role of user with id 202?",
+    "expected": [
+      "editor"
+    ],
+    "got": "editor",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CT",
+    "question": "How many users are active?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CT",
+    "question": "How many users have role 'admin'?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CT",
+    "question": "How many users have role 'editor'?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CT",
+    "question": "How many users have role 'viewer'?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "CT",
+    "question": "How many total users are there?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "LS",
+    "question": "List all user names, comma-separated.",
+    "expected": [
+      "Dana Kim, Eli Rosenberg, Farah Nassar"
+    ],
+    "got": "Dana Kim, Eli Rosenberg, Farah Nassar",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "LS",
+    "question": "List all user ids, comma-separated.",
+    "expected": [
+      "201, 202, 203"
+    ],
+    "got": "201, 202, 203",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "LS",
+    "question": "List all user roles, comma-separated.",
+    "expected": [
+      "admin, editor, viewer"
+    ],
+    "got": "admin, editor, viewer",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "LS",
+    "question": "List all user emails, comma-separated.",
+    "expected": [
+      "dana@example.com, eli@example.com, farah@example.com"
+    ],
+    "got": "dana@example.com, eli@example.com, farah@example.com",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "AG",
+    "question": "What is the lowest user id?",
+    "expected": [
+      "201"
+    ],
+    "got": "201",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "AG",
+    "question": "What is the highest user id?",
+    "expected": [
+      "203"
+    ],
+    "got": "203",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "AG",
+    "question": "What is the sum of all user ids?",
+    "expected": [
+      "606"
+    ],
+    "got": "606",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "EX",
+    "question": "Is there a user with role 'moderator'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "EX",
+    "question": "Is there an inactive user?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "EX",
+    "question": "Is there a user with email domain 'example.com'?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "FT",
+    "question": "Which users are active? List comma-separated.",
+    "expected": [
+      "Dana Kim, Eli Rosenberg, Farah Nassar"
+    ],
+    "got": "Dana Kim, Eli Rosenberg, Farah Nassar",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "FT",
+    "question": "Which user has role 'admin'?",
+    "expected": [
+      "Dana Kim"
+    ],
+    "got": "Dana Kim",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "FT",
+    "question": "Which users have id greater than 201? List comma-separated.",
+    "expected": [
+      "Eli Rosenberg, Farah Nassar"
+    ],
+    "got": "Dana Kim, Eli Rosenberg, Farah Nassar",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "BC",
+    "question": "Is user id 201 active?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "User Profiles",
+    "category": "BC",
+    "question": "Does Farah Nassar have role 'admin'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "DL",
+    "question": "What is the order id?",
+    "expected": [
+      "ORD-7891"
+    ],
+    "got": "ORD-7891",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "DL",
+    "question": "Who is the customer for the order?",
+    "expected": [
+      "Diana Prince"
+    ],
+    "got": "Diana Prince",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "DL",
+    "question": "What is the order total?",
+    "expected": [
+      "149.99"
+    ],
+    "got": "149.99",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "DL",
+    "question": "What is the shipping method?",
+    "expected": [
+      "express"
+    ],
+    "got": "express",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "DL",
+    "question": "What is the shipping address?",
+    "expected": [
+      "1234 Elm St"
+    ],
+    "got": "1234 Elm St",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the sku of the first item?",
+    "expected": [
+      "A100"
+    ],
+    "got": "A100",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the name of the first item?",
+    "expected": [
+      "Widget"
+    ],
+    "got": "Widget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the qty of the first item?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the price of the first item?",
+    "expected": [
+      "49.99"
+    ],
+    "got": "49.99",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the sku of the second item?",
+    "expected": [
+      "A101"
+    ],
+    "got": "A101",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the name of the second item?",
+    "expected": [
+      "Gadget"
+    ],
+    "got": "Gadget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the qty of the second item?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "NS",
+    "question": "What is the price of the second item?",
+    "expected": [
+      "50.01"
+    ],
+    "got": "50.01",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the sku of the item named 'Widget'?",
+    "expected": [
+      "A100"
+    ],
+    "got": "A100",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the sku of the item named 'Gadget'?",
+    "expected": [
+      "A101"
+    ],
+    "got": "A101",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the price of the item with sku A100?",
+    "expected": [
+      "49.99"
+    ],
+    "got": "49.99",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the price of the item with sku A101?",
+    "expected": [
+      "50.01"
+    ],
+    "got": "50.01",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the qty of the item with sku A100?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the qty of the item with sku A101?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the name of the item with price 49.99?",
+    "expected": [
+      "Widget"
+    ],
+    "got": "Widget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CF",
+    "question": "What is the name of the item with price 50.01?",
+    "expected": [
+      "Gadget"
+    ],
+    "got": "Gadget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CT",
+    "question": "How many items are in the order?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CT",
+    "question": "How many shipping entries are there?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CT",
+    "question": "How many items have qty greater than 1?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "CT",
+    "question": "How many items have price above 50?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "AG",
+    "question": "What is the total quantity of all items (sum of qty)?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "AG",
+    "question": "What is the highest item price?",
+    "expected": [
+      "50.01"
+    ],
+    "got": "50.01",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "AG",
+    "question": "What is the lowest item price?",
+    "expected": [
+      "49.99"
+    ],
+    "got": "49.99",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "LS",
+    "question": "List all item names, comma-separated.",
+    "expected": [
+      "Widget, Gadget"
+    ],
+    "got": "Widget, Gadget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "LS",
+    "question": "List all item skus, comma-separated.",
+    "expected": [
+      "A100, A101"
+    ],
+    "got": "A100, A101",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "LS",
+    "question": "List all item prices, comma-separated.",
+    "expected": [
+      "49.99, 50.01"
+    ],
+    "got": "49.99, 50.01",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "LS",
+    "question": "List all item quantities, comma-separated.",
+    "expected": [
+      "2, 1"
+    ],
+    "got": "2, 1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "EX",
+    "question": "Is there an item with sku 'A102'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "EX",
+    "question": "Is there an item named 'Widget'?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "EX",
+    "question": "Is there a shipping method 'standard'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "EX",
+    "question": "Does the order contain a 'Gadget'?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "FT",
+    "question": "Which items have qty greater than 1? List names.",
+    "expected": [
+      "Widget"
+    ],
+    "got": "Widget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "FT",
+    "question": "Which items have price below 50? List names.",
+    "expected": [
+      "Widget"
+    ],
+    "got": "Widget",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "BC",
+    "question": "Is the shipping method 'express'?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "BC",
+    "question": "Is the order total above 100?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "BC",
+    "question": "Does item A100 have qty of 2?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "Nested Order",
+    "category": "BC",
+    "question": "Is the customer 'Diana Prince'?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "Who is the author of post 1?",
+    "expected": [
+      "jpark"
+    ],
+    "got": "jpark",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "What is the title of post 1?",
+    "expected": [
+      "Intro to DHOOM"
+    ],
+    "got": "Intro to DHOOM",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "How many likes does post 1 have?",
+    "expected": [
+      "42"
+    ],
+    "got": "42",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "BC",
+    "question": "Is post 1 published?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "Who is the author of post 2?",
+    "expected": [
+      "beedavis"
+    ],
+    "got": "beedavis",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "What is the title of post 2?",
+    "expected": [
+      "Fiber Bundles for Data"
+    ],
+    "got": "Fiber Bundles for Data",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "How many likes does post 2 have?",
+    "expected": [
+      "108"
+    ],
+    "got": "108",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "BC",
+    "question": "Is post 2 published?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "Who is the author of post 3?",
+    "expected": [
+      "jpark"
+    ],
+    "got": "jpark",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "What is the title of post 3?",
+    "expected": [
+      "Draft: Part 3"
+    ],
+    "got": "Draft: Part 3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "DL",
+    "question": "How many likes does post 3 have?",
+    "expected": [
+      "0"
+    ],
+    "got": "0",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "BC",
+    "question": "Is post 3 published?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "RL",
+    "question": "What is the id of the post titled 'Intro to DHOOM'?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "RL",
+    "question": "What is the id of the post with 108 likes?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "RL",
+    "question": "What is the id of the post with 0 likes?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "RL",
+    "question": "What is the id of the post by 'beedavis'?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CF",
+    "question": "What is the title of the post by beedavis?",
+    "expected": [
+      "Fiber Bundles for Data"
+    ],
+    "got": "Fiber Bundles for Data",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CF",
+    "question": "How many likes does the post titled 'Draft: Part 3' have?",
+    "expected": [
+      "0"
+    ],
+    "got": "0",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CF",
+    "question": "Is the post by beedavis published?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CF",
+    "question": "What is the author of the post with the most likes?",
+    "expected": [
+      "beedavis"
+    ],
+    "got": "beedavis",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CF",
+    "question": "What is the title of the most liked post?",
+    "expected": [
+      "Fiber Bundles for Data"
+    ],
+    "got": "Fiber Bundles for Data",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CT",
+    "question": "How many posts are published?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CT",
+    "question": "How many posts are not published?",
+    "expected": [
+      "1"
+    ],
+    "got": "1",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CT",
+    "question": "How many posts does jpark have?",
+    "expected": [
+      "2"
+    ],
+    "got": "2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "CT",
+    "question": "How many total posts are there?",
+    "expected": [
+      "3"
+    ],
+    "got": "3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "LS",
+    "question": "List all post titles, comma-separated.",
+    "expected": [
+      "Intro to DHOOM, Fiber Bundles for Data, Draft: Part 3"
+    ],
+    "got": "Intro to DHOOM, Fiber Bundles for Data, Draft: Part 3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "LS",
+    "question": "List all post authors, comma-separated.",
+    "expected": [
+      "jpark, beedavis, jpark"
+    ],
+    "got": "jpark, beedavis, jpark",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "LS",
+    "question": "List all post ids, comma-separated.",
+    "expected": [
+      "1, 2, 3"
+    ],
+    "got": "1, 2, 3",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "LS",
+    "question": "List all like counts, comma-separated.",
+    "expected": [
+      "42, 108, 0"
+    ],
+    "got": "42, 108, 0",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "AG",
+    "question": "What is the total number of likes across all posts?",
+    "expected": [
+      "150"
+    ],
+    "got": "150",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "AG",
+    "question": "What is the highest number of likes?",
+    "expected": [
+      "108"
+    ],
+    "got": "108",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "AG",
+    "question": "What is the lowest number of likes?",
+    "expected": [
+      "0"
+    ],
+    "got": "0",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "EX",
+    "question": "Is there a post by author 'admin'?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "EX",
+    "question": "Is there a published post with 0 likes?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "EX",
+    "question": "Is there a post with more than 100 likes?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "FT",
+    "question": "Which post ids are published? List comma-separated.",
+    "expected": [
+      "1, 2"
+    ],
+    "got": "1, 2",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "FT",
+    "question": "Which authors have published posts? List comma-separated.",
+    "expected": [
+      "jpark, beedavis"
+    ],
+    "got": "jpark, beedavis",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "FT",
+    "question": "Which post ids have more than 10 likes? List comma-separated.",
+    "expected": [
+      "1, 2"
+    ],
+    "got": "2",
+    "correct": false
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "BC",
+    "question": "Is post id 3 published?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "BC",
+    "question": "Does post id 1 have more than 40 likes?",
+    "expected": [
+      "true",
+      "yes"
+    ],
+    "got": "true",
+    "correct": true
+  },
+  {
+    "format": "TOON",
+    "dataset": "API Response",
+    "category": "BC",
+    "question": "Is the post 'Draft: Part 3' published?",
+    "expected": [
+      "false",
+      "no"
+    ],
+    "got": "false",
+    "correct": true
+  }
+]

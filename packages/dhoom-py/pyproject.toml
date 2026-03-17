@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dhoom"
+version = "0.3.0"
+description = "DHOOM — Davis Human-readable Optimized Object Markup (encoder/decoder)"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Bee Rosa Davis", email = "bee_davis@alumni.brown.edu" }]
+keywords = ["serialization", "json", "dhoom", "llm", "tokens"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://dhoom.dev"
+Repository = "https://github.com/nurdymuny/dhoom"
+
+[tool.setuptools.packages.find]
+where = ["src"]
