@@ -158,6 +158,29 @@ code,.mono{font-family:'Fira Code',monospace}
 footer{text-align:center;padding:32px 20px;color:#383850;font-size:12px}
 footer a{color:#FF6030;font-weight:600}
 
+/* ── Profile Panel ─────────────────────── */
+.profile-panel{margin-top:0}
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px}
+.profile-stat{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);border-radius:8px;padding:10px 12px;text-align:center}
+.profile-stat .pval{font-size:20px;font-weight:900;letter-spacing:-.02em;color:#D0D0E0}
+.profile-stat .pval.fire{background:linear-gradient(135deg,#FF6832,#FF3020);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.profile-stat .plbl{font-size:9px;font-weight:600;color:#505068;text-transform:uppercase;letter-spacing:.08em;margin-top:2px;font-family:'Fira Code',monospace}
+.field-table{width:100%;border-collapse:collapse;font-size:11px;padding:0 14px}
+.field-table th{text-align:left;color:#505068;font-weight:600;padding:6px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-family:'Fira Code',monospace;border-bottom:1px solid rgba(255,255,255,0.04)}
+.field-table td{padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.02);font-family:'Fira Code',monospace;font-size:11px}
+.field-table tr:hover{background:rgba(255,255,255,0.015)}
+.role-tag{font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:.02em}
+.role-tag.arithmetic{background:rgba(78,201,176,0.1);color:#4EC9B0}
+.role-tag.default{background:rgba(220,220,170,0.1);color:#DCDCAA}
+.role-tag.interned{background:rgba(255,96,48,0.1);color:#FF6030}
+.role-tag.computed{background:rgba(188,140,255,0.1);color:#BC8CFF}
+.role-tag.nested{background:rgba(63,185,80,0.1);color:#3FB950}
+.role-tag.variable{background:rgba(128,128,152,0.08);color:#808098}
+.role-tag.delta{background:rgba(86,156,214,0.1);color:#569CD6}
+.curv-bar{width:50px;height:6px;border-radius:3px;background:rgba(255,255,255,0.04);display:inline-block;vertical-align:middle;margin-right:5px;overflow:hidden}
+.curv-fill{height:100%;border-radius:3px;transition:width .3s}
+.curv-num{color:#707088;font-size:10px}
+
 /* ── Responsive ───────────────────────── */
 @media(max-width:860px){
   .main-grid{grid-template-columns:1fr}
@@ -236,6 +259,24 @@ footer a{color:#FF6030;font-weight:600}
           <span class="feat-chip"><span class="sigil" style="color:#F85149">:</span> Deviation</span>
         </div>
       </div>
+      <!-- ═══ Profile Panel ═══ -->
+      <div class="panel profile-panel">
+        <div class="panel-head">
+          <span class="lang"><span class="dot" style="background:#BC8CFF"></span> Geometric Profile</span>
+          <span class="size" id="profile-count"></span>
+        </div>
+        <div class="profile-grid">
+          <div class="profile-stat"><div class="pval" id="p-elided">&mdash;</div><div class="plbl">Fields Elided</div></div>
+          <div class="profile-stat"><div class="pval fire" id="p-conf">&mdash;</div><div class="plbl">Avg Confidence</div></div>
+        </div>
+        <div style="padding:0 2px 10px;overflow-x:auto">
+          <table class="field-table">
+            <thead><tr><th>Field</th><th>Role</th><th>Curvature</th><th>Conf</th></tr></thead>
+            <tbody id="profile-fields"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="json-toggle" onclick="toggleJson()">
           <span class="arrow" id="json-arrow">&#9654;</span>
@@ -452,6 +493,9 @@ function render() {
   }).join('\n');
   prevLines = newLines.slice();
 
+  // Profile
+  renderProfile();
+
   // JSON
   if (orders.length) {
     document.getElementById('json-code').innerHTML = hlJson(JSON.stringify({orders: orders.map(function(o, i) {
@@ -647,6 +691,118 @@ function saveOrder() {
 
 // Close modal on Escape
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+// ═══════════════════════════════════════════════════
+// PROFILE API (ported from dhoom-rs)
+// ═══════════════════════════════════════════════════
+function fieldCurvature(nums) {
+  if (nums.length < 2) return 0;
+  var n = nums.length;
+  var mean = nums.reduce(function(s, v) { return s + v; }, 0) / n;
+  var variance = nums.reduce(function(s, v) { return s + (v - mean) * (v - mean); }, 0) / n;
+  var min = Math.min.apply(null, nums);
+  var max = Math.max.apply(null, nums);
+  var range = max - min;
+  if (range <= 0) return 0;
+  return variance / (range * range);
+}
+
+function profileOrders(orders) {
+  if (!orders.length) return null;
+  var keys = ['id','customer','payment','shipping','status','items'];
+  var n = orders.length;
+  var profiles = [];
+  var elidedSlots = 0;
+  var totalSlots = n * keys.length;
+
+  // ID: arithmetic ORD-2001, ORD-2002...
+  profiles.push({ name: 'id', role: 'arithmetic', detail: 'ORD-2001 +1', k: 0, c: 1 });
+  elidedSlots += n;
+
+  // customer: variable (all unique names), compute curvature on name lengths
+  var nameLens = orders.map(function(o) { return o.customer.length; });
+  var kCust = fieldCurvature(nameLens);
+  profiles.push({ name: 'customer', role: 'variable', detail: '', k: kCust, c: 1 / (1 + kCust) });
+
+  // payment: interned
+  var payPool = {};
+  orders.forEach(function(o) { payPool[o.payment] = true; });
+  var payPoolSize = Object.keys(payPool).length;
+  profiles.push({ name: 'payment', role: 'interned', detail: payPoolSize + ' values', k: 0, c: 1 });
+  elidedSlots += n;
+
+  // shipping: interned
+  var shipPool = {};
+  orders.forEach(function(o) { shipPool[o.shipping] = true; });
+  var shipPoolSize = Object.keys(shipPool).length;
+  profiles.push({ name: 'shipping', role: 'interned', detail: shipPoolSize + ' values', k: 0, c: 1 });
+  elidedSlots += n;
+
+  // status: default
+  var sc = {};
+  orders.forEach(function(o) { sc[o.status] = (sc[o.status] || 0) + 1; });
+  var defEntry = Object.entries(sc).sort(function(a, b) { return b[1] - a[1]; })[0];
+  var defVal = defEntry[0], defCount = defEntry[1];
+  var defPct = Math.round(100 * defCount / n);
+  if (defCount > n / 2) {
+    profiles.push({ name: 'status', role: 'default', detail: '"' + defVal + '" ' + defPct + '%', k: 0, c: 1 });
+    elidedSlots += defCount;
+  } else {
+    profiles.push({ name: 'status', role: 'variable', detail: '', k: 0, c: 1 });
+  }
+
+  // items: nested sub-bundle with computed total
+  profiles.push({ name: 'items', role: 'nested', detail: 'sub-bundle', k: 0, c: 1 });
+  elidedSlots += n;
+
+  // Nested field analysis: items > total is computed
+  var allPrices = [];
+  orders.forEach(function(o) {
+    o.items.forEach(function(it) { allPrices.push(it.price); });
+  });
+  var kPrice = fieldCurvature(allPrices);
+  profiles.push({ name: '  └ total', role: 'computed', detail: 'price*qty', k: 0, c: 1 });
+
+  var avgConf = profiles.reduce(function(s, p) { return s + p.c; }, 0) / profiles.length;
+  var elidedPct = totalSlots > 0 ? Math.round(100 * elidedSlots / totalSlots) : 0;
+
+  return { profiles: profiles, elidedPct: elidedPct, avgConf: avgConf };
+}
+
+function renderProfile() {
+  var result = profileOrders(orders);
+  if (!result) {
+    document.getElementById('p-elided').textContent = '\u2014';
+    document.getElementById('p-conf').textContent = '\u2014';
+    document.getElementById('profile-count').textContent = '';
+    document.getElementById('profile-fields').innerHTML = '<tr><td colspan="4" style="text-align:center;color:#383850;padding:16px">No data to profile</td></tr>';
+    return;
+  }
+
+  document.getElementById('p-elided').textContent = result.elidedPct + '%';
+  document.getElementById('p-conf').textContent = (result.avgConf * 100).toFixed(0) + '%';
+  document.getElementById('profile-count').textContent = result.profiles.length + ' fields';
+
+  document.getElementById('profile-fields').innerHTML = result.profiles.map(function(p) {
+    var confPct = (p.c * 100).toFixed(0);
+    var kDisplay = p.k.toFixed(4);
+    var fillW = Math.min(100, p.k * 400);
+    var fillColor = p.c > 0.9 ? '#3FB950' : p.c > 0.7 ? '#E8A735' : '#F85149';
+    return '<tr>' +
+      '<td style="color:#D0D0E0;font-weight:600">' + esc(p.name) + '</td>' +
+      '<td><span class="role-tag ' + p.role + '">' + roleLabel(p.role, p.detail) + '</span></td>' +
+      '<td><span class="curv-bar"><span class="curv-fill" style="width:' + fillW + '%;background:' + fillColor + '"></span></span><span class="curv-num">' + kDisplay + '</span></td>' +
+      '<td style="color:' + fillColor + ';font-weight:700">' + confPct + '%</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function roleLabel(role, detail) {
+  var sigils = { arithmetic: '@', default: '|', interned: '&', computed: '#', nested: '>', variable: '~', delta: '^' };
+  var s = (sigils[role] || '') + ' ' + role;
+  if (detail) s += ' (' + detail + ')';
+  return s;
+}
 
 // ═══════════════════════════════════════════════════
 // INIT
