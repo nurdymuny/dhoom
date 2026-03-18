@@ -181,6 +181,29 @@ footer a{color:#FF6030;font-weight:600}
 .curv-fill{height:100%;border-radius:3px;transition:width .3s}
 .curv-num{color:#707088;font-size:10px}
 
+/* ── Profile Drill-down ───────────────── */
+.profile-stat{cursor:pointer;transition:all .2s;position:relative}
+.profile-stat:hover{border-color:rgba(255,96,48,0.15);background:rgba(255,255,255,0.03)}
+.profile-stat .hint-icon{position:absolute;top:5px;right:7px;font-size:10px;color:#383850;transition:color .2s}
+.profile-stat:hover .hint-icon{color:#606078}
+.stat-explain{display:none;padding:0 14px 10px;font-size:12px;line-height:1.6;color:#808098;animation:explain-in .2s ease-out}
+.stat-explain.show{display:block}
+.stat-explain strong{color:#D0D0E0;font-weight:600}
+.stat-explain .ex-sigil{font-weight:800;font-family:'Fira Code',monospace}
+@keyframes explain-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.field-table tbody tr{cursor:pointer;transition:background .15s}
+.field-table tbody tr:active{background:rgba(255,96,48,0.04)}
+.field-explain{background:rgba(188,140,255,0.03);border-bottom:1px solid rgba(255,255,255,0.03)}
+.field-explain td{padding:8px 14px !important;font-family:'Outfit',sans-serif !important;font-size:12px !important;line-height:1.6;color:#9090A8}
+.field-explain .ex-title{color:#D0D0E0;font-weight:700;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.field-explain .ex-title .sigil{font-family:'Fira Code',monospace;font-weight:800;font-size:14px}
+.field-explain .ex-what{margin-bottom:6px}
+.field-explain .ex-why{color:#707088;font-size:11px;padding:6px 10px;background:rgba(255,255,255,0.02);border-radius:5px;border-left:2px solid rgba(188,140,255,0.3)}
+.field-explain .ex-metric{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.04);border-radius:4px;padding:2px 8px;font-family:'Fira Code',monospace;font-size:10px;color:#B0B0C8;margin-top:6px;margin-right:6px}
+.profile-help{display:flex;align-items:center;gap:5px;padding:6px 14px;font-size:11px;color:#505068;cursor:pointer;transition:color .2s;user-select:none;border-bottom:1px solid rgba(255,255,255,0.03)}
+.profile-help:hover{color:#9090A8}
+.profile-help svg{flex-shrink:0}
+
 /* ── Responsive ───────────────────────── */
 @media(max-width:860px){
   .main-grid{grid-template-columns:1fr}
@@ -265,9 +288,27 @@ footer a{color:#FF6030;font-weight:600}
           <span class="lang"><span class="dot" style="background:#BC8CFF"></span> Geometric Profile</span>
           <span class="size" id="profile-count"></span>
         </div>
+        <div class="profile-help" onclick="toggleProfileHelp()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span id="help-text">Click any stat or field row to learn what it means</span>
+        </div>
         <div class="profile-grid">
-          <div class="profile-stat"><div class="pval" id="p-elided">&mdash;</div><div class="plbl">Fields Elided</div></div>
-          <div class="profile-stat"><div class="pval fire" id="p-conf">&mdash;</div><div class="plbl">Avg Confidence</div></div>
+          <div class="profile-stat" onclick="toggleStatExplain('elided')">
+            <span class="hint-icon">?</span>
+            <div class="pval" id="p-elided">&mdash;</div><div class="plbl">Fields Elided</div>
+          </div>
+          <div class="profile-stat" onclick="toggleStatExplain('conf')">
+            <span class="hint-icon">?</span>
+            <div class="pval fire" id="p-conf">&mdash;</div><div class="plbl">Avg Confidence</div>
+          </div>
+        </div>
+        <div class="stat-explain" id="explain-elided">
+          <strong>Fields Elided</strong> = the percentage of data that DHOOM doesn't need to write at all.<br>
+          If a field follows a pattern (like IDs counting up) or most values are the same (like status = &quot;delivered&quot;), DHOOM states the rule once in the header and skips writing those values in every row. <strong>Higher = more compression.</strong>
+        </div>
+        <div class="stat-explain" id="explain-conf">
+          <strong>Avg Confidence</strong> = how predictable your data is overall.<br>
+          100% means every field follows a clean pattern. Lower confidence means the data is irregular or chaotic, making it harder to compress. Think of it like a weather forecast — <strong>higher confidence = DHOOM can predict and skip more data.</strong>
         </div>
         <div style="padding:0 2px 10px;overflow-x:auto">
           <table class="field-table">
@@ -769,8 +810,56 @@ function profileOrders(orders) {
   return { profiles: profiles, elidedPct: elidedPct, avgConf: avgConf };
 }
 
+var expandedField = -1;
+
+var ROLE_EXPLAIN = {
+  arithmetic: {
+    icon: '@', color: '#4EC9B0',
+    what: 'This field counts up in a predictable sequence (like 1, 2, 3... or ORD-2001, ORD-2002...).',
+    why: 'DHOOM only writes the starting value and step size once. All other values are calculated automatically — zero bytes per row.',
+    saving: 'Every single value is skipped'
+  },
+  interned: {
+    icon: '&', color: '#FF6030',
+    what: 'This field picks from a small set of categories (like "credit_card", "paypal", "bank_transfer").',
+    why: 'Instead of writing the full text in every row, DHOOM creates a lookup table and uses a single number (0, 1, 2...) in each row. Much shorter!',
+    saving: 'Full text replaced with tiny index numbers'
+  },
+  default: {
+    icon: '|', color: '#DCDCAA',
+    what: 'Most rows share the same value for this field.',
+    why: 'DHOOM writes the common value once in the header, then only writes the exceptions — rows that are different. The majority of rows skip this field entirely.',
+    saving: 'Matching rows don\'t write anything'
+  },
+  computed: {
+    icon: '#', color: '#BC8CFF',
+    what: 'This field can be calculated from other fields (e.g. total = price × qty).',
+    why: 'DHOOM writes the formula once. The value is never stored — it\'s recalculated when decoding. Zero bytes per row!',
+    saving: 'Formula stored once, values regenerated'
+  },
+  nested: {
+    icon: '>', color: '#3FB950',
+    what: 'This field contains sub-objects (like the list of items inside each order).',
+    why: 'DHOOM compresses the nested structure the same way — finding patterns inside the sub-data too. It\'s like recursion!',
+    saving: 'Inner data gets its own compression'
+  },
+  variable: {
+    icon: '~', color: '#808098',
+    what: 'This field is different in every row with no obvious pattern (like customer names).',
+    why: 'No shortcut available — DHOOM writes each value as-is. But other fields\' compression more than makes up for it!',
+    saving: 'Written as-is (no compression)'
+  },
+  delta: {
+    icon: '^', color: '#569CD6',
+    what: 'Values change by small amounts between rows (like timestamps 60 seconds apart).',
+    why: 'Instead of writing the full value, DHOOM writes the difference from the previous row. Small differences = smaller numbers = fewer bytes.',
+    saving: 'Big numbers become tiny differences'
+  }
+};
+
 function renderProfile() {
   var result = profileOrders(orders);
+  expandedField = -1;
   if (!result) {
     document.getElementById('p-elided').textContent = '\u2014';
     document.getElementById('p-conf').textContent = '\u2014';
@@ -783,18 +872,82 @@ function renderProfile() {
   document.getElementById('p-conf').textContent = (result.avgConf * 100).toFixed(0) + '%';
   document.getElementById('profile-count').textContent = result.profiles.length + ' fields';
 
-  document.getElementById('profile-fields').innerHTML = result.profiles.map(function(p) {
+  document.getElementById('profile-fields').innerHTML = result.profiles.map(function(p, i) {
     var confPct = (p.c * 100).toFixed(0);
     var kDisplay = p.k.toFixed(4);
     var fillW = Math.min(100, p.k * 400);
     var fillColor = p.c > 0.9 ? '#3FB950' : p.c > 0.7 ? '#E8A735' : '#F85149';
-    return '<tr>' +
-      '<td style="color:#D0D0E0;font-weight:600">' + esc(p.name) + '</td>' +
+    return '<tr onclick="toggleFieldExplain(' + i + ')" title="Click to learn more">' +
+      '<td style="color:#D0D0E0;font-weight:600">' + esc(p.name) + ' <span style="color:#383850;font-size:9px">&#9432;</span></td>' +
       '<td><span class="role-tag ' + p.role + '">' + roleLabel(p.role, p.detail) + '</span></td>' +
       '<td><span class="curv-bar"><span class="curv-fill" style="width:' + fillW + '%;background:' + fillColor + '"></span></span><span class="curv-num">' + kDisplay + '</span></td>' +
       '<td style="color:' + fillColor + ';font-weight:700">' + confPct + '%</td>' +
     '</tr>';
   }).join('');
+}
+
+function toggleFieldExplain(idx) {
+  var tbody = document.getElementById('profile-fields');
+  var existing = tbody.querySelector('.field-explain');
+  if (existing) {
+    var wasIdx = parseInt(existing.getAttribute('data-idx'));
+    existing.remove();
+    if (wasIdx === idx) { expandedField = -1; return; }
+  }
+  expandedField = idx;
+  var result = profileOrders(orders);
+  if (!result) return;
+  var p = result.profiles[idx];
+  var info = ROLE_EXPLAIN[p.role] || ROLE_EXPLAIN.variable;
+
+  var confPct = (p.c * 100).toFixed(0);
+  var confWord = p.c > 0.95 ? 'perfectly predictable' : p.c > 0.8 ? 'very predictable' : p.c > 0.6 ? 'fairly predictable' : 'unpredictable';
+  var kWord = p.k < 0.01 ? 'almost zero (very uniform)' : p.k < 0.1 ? 'low (smooth data)' : p.k < 0.3 ? 'moderate (some variation)' : 'high (chaotic data)';
+
+  var explainRow = document.createElement('tr');
+  explainRow.className = 'field-explain';
+  explainRow.setAttribute('data-idx', idx);
+  explainRow.innerHTML = '<td colspan="4">' +
+    '<div class="ex-title"><span class="sigil" style="color:' + info.color + '">' + info.icon + '</span> ' + esc(p.name.trim()) + ' &mdash; ' + p.role + '</div>' +
+    '<div class="ex-what">' + info.what + '</div>' +
+    '<div class="ex-why">' + info.why + '<br><br>\uD83D\uDCA1 <strong>Saving:</strong> ' + info.saving + '</div>' +
+    '<div style="margin-top:8px">' +
+      '<span class="ex-metric">Curvature K = ' + p.k.toFixed(4) + ' \u2192 ' + kWord + '</span>' +
+      '<span class="ex-metric">Confidence = ' + confPct + '% \u2192 ' + confWord + '</span>' +
+    '</div>' +
+  '</td>';
+
+  // Insert after the clicked row
+  var rows = tbody.querySelectorAll('tr:not(.field-explain)');
+  if (rows[idx] && rows[idx].nextSibling) {
+    tbody.insertBefore(explainRow, rows[idx].nextSibling);
+  } else {
+    tbody.appendChild(explainRow);
+  }
+}
+
+function toggleStatExplain(which) {
+  var el = document.getElementById('explain-' + which);
+  var isOpen = el.classList.contains('show');
+  // Close all stat explains
+  document.querySelectorAll('.stat-explain').forEach(function(e) { e.classList.remove('show'); });
+  if (!isOpen) el.classList.add('show');
+}
+
+function toggleProfileHelp() {
+  var helpEl = document.getElementById('help-text');
+  var isExpanded = helpEl.getAttribute('data-expanded') === '1';
+  if (isExpanded) {
+    helpEl.textContent = 'Click any stat or field row to learn what it means';
+    helpEl.removeAttribute('data-expanded');
+  } else {
+    helpEl.innerHTML = '<strong style="color:#D0D0E0">How to read this panel:</strong><br>' +
+      '\u2022 <strong>Fields Elided</strong> — % of data DHOOM skips entirely (higher = smaller output)<br>' +
+      '\u2022 <strong>Confidence</strong> — how predictable the data is (100% = perfect patterns)<br>' +
+      '\u2022 <strong>Curvature (K)</strong> — measures data chaos. K near 0 = smooth & compressible. K near 1 = wild & random<br>' +
+      '\u2022 <strong>Role</strong> — what trick DHOOM uses for each field (click a row to see details!)';
+    helpEl.setAttribute('data-expanded', '1');
+  }
 }
 
 function roleLabel(role, detail) {
