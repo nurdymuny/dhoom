@@ -871,6 +871,11 @@ function Hero({ setPage }) {
             <span key={lang} onClick={() => setPage("implementations")} style={{ padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600, fontFamily: "'Fira Code',monospace", color: "#9090A8", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer", transition: "border-color 0.2s" }}>{lang}</span>
           ))}
         </div>
+        <div style={{ marginTop: 20, display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 20, background: "rgba(188,140,255,0.06)", border: "1px solid rgba(188,140,255,0.12)", cursor: "default" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#BC8CFF" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          <span style={{ fontSize: 10, fontWeight: 700, color: "#BC8CFF", fontFamily: "'Fira Code',monospace", letterSpacing: "0.04em" }}>PATENT PENDING</span>
+          <span style={{ fontSize: 10, color: "#505068", fontFamily: "'Fira Code',monospace" }}>64/008,940</span>
+        </div>
       </div>
     </div>
   );
@@ -1046,7 +1051,10 @@ export default function DhoomDev() {
           <div style={{ padding: "32px 24px 60px", textAlign: "center" }}>
             <button onClick={() => setPage("playground")} style={{ padding: "12px 28px", borderRadius: 8, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#FF6030,#E83018)", color: "#fff", fontSize: 14, fontWeight: 700 }}>Open Playground</button>
           </div>
-          <div style={{ padding: "20px", textAlign: "center", fontSize: 11, color: "#242438", fontFamily: "'Fira Code',monospace", borderTop: "1px solid rgba(255,255,255,0.02)" }}>DHOOM · Davis Geometric · 2026 · <a href="https://github.com/nurdymuny/dhoom" target="_blank" rel="noopener noreferrer" style={{ color: "#383850", textDecoration: "none" }}>GitHub</a></div>
+          <div style={{ padding: "20px", textAlign: "center", fontSize: 11, color: "#242438", fontFamily: "'Fira Code',monospace", borderTop: "1px solid rgba(255,255,255,0.02)" }}>
+            <div>DHOOM · Davis Geometric · 2026 · <a href="https://github.com/nurdymuny/dhoom" target="_blank" rel="noopener noreferrer" style={{ color: "#383850", textDecoration: "none" }}>GitHub</a></div>
+            <div style={{ marginTop: 6, fontSize: 9, color: "#1C1C2C", lineHeight: 1.5 }}>U.S. Patent Application 64/008,940 · Filed 03/18/2026<br/>System and Method for Human-Readable Data Serialization via Fiber Bundle Geometry<br/>with Positional Encoding and Trailing Default Elision</div>
+          </div>
         </>
       )}
 
