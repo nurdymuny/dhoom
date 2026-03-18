@@ -323,7 +323,7 @@ public class DhoomTests {
 
         test("Parse delta modifier", () -> {
             var fiber = DhoomCodec.parseFiber("events{ts^, name}");
-            assertEqual("delta", fiber.fields().get(0).modifier().type());
+            assertEqual(DhoomCodec.ModifierType.DELTA, fiber.fields().get(0).modifier().type());
         });
 
         test("Decode delta values", () -> {
@@ -386,7 +386,7 @@ public class DhoomTests {
 
         test("Parse morphism modifier", () -> {
             var fiber = DhoomCodec.parseFiber("orders{id@1, user_id->users}");
-            assertEqual("morphism", fiber.fields().get(1).modifier().type());
+            assertEqual(DhoomCodec.ModifierType.MORPHISM, fiber.fields().get(1).modifier().type());
             assertEqual("users", fiber.fields().get(1).modifier().target());
         });
 
@@ -396,6 +396,124 @@ public class DhoomTests {
             var arr = result.asObject().get("orders").asArray();
             assertEqual("Alice", arr.get(0).asObject().get("user_id").asString());
             assertEqual("Bob", arr.get(1).asObject().get("user_id").asString());
+        });
+
+        // --- String Interning Tests ---
+        System.out.println("\nString Interning Tests:");
+
+        test("Parse interned modifier", () -> {
+            var fiber = DhoomCodec.parseFiber("orders{id@1, status&}");
+            assertEqual(DhoomCodec.ModifierType.INTERNED, fiber.fields().get(1).modifier().type());
+        });
+
+        test("Decode interned fields", () -> {
+            var input = "orders{id@1, status&}:\n&status[completed, pending, failed]\n0\n1\n0\n2\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("orders").asArray();
+            assertEqual("completed", arr.get(0).asObject().get("status").asString());
+            assertEqual("pending", arr.get(1).asObject().get("status").asString());
+            assertEqual("completed", arr.get(2).asObject().get("status").asString());
+            assertEqual("failed", arr.get(3).asObject().get("status").asString());
+        });
+
+        test("Encode detects interning", () -> {
+            var records = new ArrayList<JsonValue>();
+            String[] statuses = {"completed","pending","completed","failed","completed","pending","completed","failed","completed"};
+            for (int i = 0; i < statuses.length; i++) {
+                var obj = new LinkedHashMap<String, JsonValue>();
+                obj.put("id", JsonValue.of((long)(i + 1)));
+                obj.put("status", JsonValue.of(statuses[i]));
+                records.add(JsonValue.ofObject(obj));
+            }
+            var wrapper = new LinkedHashMap<String, JsonValue>();
+            wrapper.put("orders", JsonValue.ofArray(records));
+            var data = JsonValue.ofObject(wrapper);
+            var dhoom = DhoomCodec.encode(data);
+            assertContains(dhoom, "status&");
+            assertContains(dhoom, "&status[");
+        });
+
+        test("Interning roundtrip", () -> {
+            var records = new ArrayList<JsonValue>();
+            String[] statuses = {"completed","pending","completed","failed","completed","pending","completed","failed","completed"};
+            for (int i = 0; i < statuses.length; i++) {
+                var obj = new LinkedHashMap<String, JsonValue>();
+                obj.put("id", JsonValue.of((long)(i + 1)));
+                obj.put("status", JsonValue.of(statuses[i]));
+                records.add(JsonValue.ofObject(obj));
+            }
+            var wrapper = new LinkedHashMap<String, JsonValue>();
+            wrapper.put("orders", JsonValue.ofArray(records));
+            var data = JsonValue.ofObject(wrapper);
+            var dhoom = DhoomCodec.encode(data);
+            var result = DhoomCodec.decode(dhoom);
+            assertJsonEquals(data, result);
+        });
+
+        // --- Computed Field Tests ---
+        System.out.println("\nComputed Field Tests:");
+
+        test("Parse computed modifier", () -> {
+            var fiber = DhoomCodec.parseFiber("items{price, qty, total#price*qty}");
+            assertEqual(DhoomCodec.ModifierType.COMPUTED, fiber.fields().get(2).modifier().type());
+            assertEqual("price*qty", fiber.fields().get(2).modifier().expr());
+        });
+
+        test("Decode computed fields", () -> {
+            var input = "items{name, price, qty, total#price*qty}:\nWidget, 10, 2\nGadget, 25, 3\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("items").asArray();
+            assertEqual(20L, arr.get(0).asObject().get("total").asLong());
+            assertEqual(75L, arr.get(1).asObject().get("total").asLong());
+        });
+
+        test("Decode computed addition", () -> {
+            var input = "items{a, b, sum#a+b}:\n10, 20\n5, 15\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("items").asArray();
+            assertEqual(30L, arr.get(0).asObject().get("sum").asLong());
+            assertEqual(20L, arr.get(1).asObject().get("sum").asLong());
+        });
+
+        test("Decode computed subtraction", () -> {
+            var input = "items{a, b, diff#a-b}:\n100, 30\n50, 20\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("items").asArray();
+            assertEqual(70L, arr.get(0).asObject().get("diff").asLong());
+            assertEqual(30L, arr.get(1).asObject().get("diff").asLong());
+        });
+
+        test("Encode detects computed", () -> {
+            var json = "{\"items\":[{\"price\":10,\"qty\":3,\"total\":30},{\"price\":25,\"qty\":2,\"total\":50},{\"price\":5,\"qty\":4,\"total\":20}]}";
+            var dhoom = DhoomCodec.encode(JsonValue.parse(json));
+            assertContains(dhoom, "total#price*qty");
+        });
+
+        test("Computed roundtrip", () -> {
+            roundtrip("{\"items\":[{\"price\":10,\"qty\":3,\"total\":30},{\"price\":25,\"qty\":2,\"total\":50},{\"price\":5,\"qty\":4,\"total\":20}]}");
+        });
+
+        // --- Inline Constraint Tests ---
+        System.out.println("\nInline Constraint Tests:");
+
+        test("Parse constraint modifier", () -> {
+            var fiber = DhoomCodec.parseFiber("items{name!str, age!int}");
+            assertEqual(DhoomCodec.ModifierType.CONSTRAINT, fiber.fields().get(0).modifier().type());
+            assertEqual("str", fiber.fields().get(0).modifier().constraint());
+            assertEqual("int", fiber.fields().get(1).modifier().constraint());
+        });
+
+        test("Parse enum constraint", () -> {
+            var fiber = DhoomCodec.parseFiber("items{role!enum:admin/user/guest}");
+            assertEqual("enum:admin/user/guest", fiber.fields().get(0).modifier().constraint());
+        });
+
+        test("Decode with constraints (metadata only)", () -> {
+            var input = "items{name!str, age!int}:\nAlice, 30\nBob, 25\n";
+            var result = DhoomCodec.decode(input);
+            var arr = result.asObject().get("items").asArray();
+            assertEqual("Alice", arr.get(0).asObject().get("name").asString());
+            assertEqual(30L, arr.get(0).asObject().get("age").asLong());
         });
 
         // --- Summary ---

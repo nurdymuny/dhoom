@@ -15,11 +15,13 @@ public final class DhoomCodec {
     // Types
     // -----------------------------------------------------------------------
 
-    public enum ModifierType { ARITHMETIC, DEFAULT, NESTED, DELTA, MORPHISM }
+    public enum ModifierType { ARITHMETIC, DEFAULT, NESTED, DELTA, MORPHISM, INTERNED, COMPUTED, CONSTRAINT }
 
-    public record Modifier(ModifierType type, JsonValue start, Integer step, JsonValue defaultValue, String target) {
-        public Modifier(ModifierType type) { this(type, null, null, null, null); }
-        public Modifier(ModifierType type, JsonValue start, Integer step, JsonValue defaultValue) { this(type, start, step, defaultValue, null); }
+    public record Modifier(ModifierType type, JsonValue start, Integer step, JsonValue defaultValue, String target,
+                           List<String> pool, String expr, String constraint) {
+        public Modifier(ModifierType type) { this(type, null, null, null, null, null, null, null); }
+        public Modifier(ModifierType type, JsonValue start, Integer step, JsonValue defaultValue) { this(type, start, step, defaultValue, null, null, null, null); }
+        public Modifier(ModifierType type, JsonValue start, Integer step, JsonValue defaultValue, String target) { this(type, start, step, defaultValue, target, null, null, null); }
     }
 
     public record FieldDecl(String name, Modifier modifier) {
@@ -103,6 +105,26 @@ public final class DhoomCodec {
         if (arrowIdx != -1) {
             return new FieldDecl(token.substring(0, arrowIdx),
                     new Modifier(ModifierType.MORPHISM, null, null, null, token.substring(arrowIdx + 2)));
+        }
+
+        // Computed: field#expr
+        int hashIdx = token.indexOf('#');
+        if (hashIdx != -1) {
+            return new FieldDecl(token.substring(0, hashIdx),
+                    new Modifier(ModifierType.COMPUTED, null, null, null, null, null, token.substring(hashIdx + 1), null));
+        }
+
+        // Constraint: field!constraint
+        int bangIdx = token.indexOf('!');
+        if (bangIdx != -1) {
+            return new FieldDecl(token.substring(0, bangIdx),
+                    new Modifier(ModifierType.CONSTRAINT, null, null, null, null, null, null, token.substring(bangIdx + 1)));
+        }
+
+        // Interned: field&
+        if (token.endsWith("&")) {
+            return new FieldDecl(token.substring(0, token.length() - 1),
+                    new Modifier(ModifierType.INTERNED));
         }
 
         // Delta: field^
@@ -220,7 +242,8 @@ public final class DhoomCodec {
 
     private static List<FieldDecl> recordFields(Fiber fiber) {
         return fiber.fields().stream()
-                .filter(f -> f.modifier() == null || f.modifier().type() != ModifierType.ARITHMETIC)
+                .filter(f -> f.modifier() == null ||
+                        (f.modifier().type() != ModifierType.ARITHMETIC && f.modifier().type() != ModifierType.COMPUTED))
                 .toList();
     }
 
@@ -413,6 +436,9 @@ public final class DhoomCodec {
 
     private record DecodeResult(String name, JsonValue value) {}
 
+    private static final Pattern POOL_RX = Pattern.compile("^&(\\w[\\w-]*)\\[(.+)]$");
+    private static final Pattern COMPUTED_EXPR_RX = Pattern.compile("^(\\w[\\w-]*)\\s*([+\\-*])\\s*(\\w[\\w-]*)$");
+
     private static DecodeResult decodeBundle(String input) {
         int headerEnd = findHeaderEnd(input);
         if (headerEnd == -1) throw new DhoomException("Missing '}:' header terminator");
@@ -421,20 +447,95 @@ public final class DhoomCodec {
         String body = input.substring(headerEnd);
         Fiber fiber = parseFiber(header);
 
+        // Parse pool lines
+        String[] bodyLines = body.split("\n");
+        List<String> remaining = new ArrayList<>();
+        List<FieldDecl> mutableFields = new ArrayList<>(fiber.fields());
+        for (String line : bodyLines) {
+            String trimmed = line.trim();
+            Matcher pm = POOL_RX.matcher(trimmed);
+            if (pm.matches()) {
+                String poolField = pm.group(1);
+                String[] poolVals = pm.group(2).split(",");
+                List<String> pool = new ArrayList<>();
+                for (String pv : poolVals) pool.add(pv.trim());
+                for (int i = 0; i < mutableFields.size(); i++) {
+                    FieldDecl fd = mutableFields.get(i);
+                    if (fd.name().equals(poolField) && fd.modifier() != null && fd.modifier().type() == ModifierType.INTERNED) {
+                        mutableFields.set(i, new FieldDecl(fd.name(),
+                                new Modifier(ModifierType.INTERNED, null, null, null, null, pool, null, null)));
+                    }
+                }
+            } else {
+                remaining.add(line);
+            }
+        }
+        fiber = new Fiber(fiber.name(), mutableFields, fiber.sparse());
+        body = String.join("\n", remaining);
+
         List<FieldDecl> recFields = recordFields(fiber);
         boolean hasNested = recFields.stream()
                 .anyMatch(f -> f.modifier() != null && f.modifier().type() == ModifierType.NESTED);
 
-        JsonValue records;
+        List<JsonValue> records;
         if (fiber.sparse()) {
-            records = JsonValue.ofArray(decodeSparseRecords(body, fiber));
+            records = decodeSparseRecords(body, fiber);
         } else if (hasNested) {
-            records = decodeNestedRecords(body, fiber);
+            JsonValue nested = decodeNestedRecords(body, fiber);
+            records = nested.asArray();
         } else {
-            records = JsonValue.ofArray(decodeFlatRecords(body, fiber));
+            records = decodeFlatRecords(body, fiber);
         }
 
-        return new DecodeResult(fiber.name(), records);
+        // Post-decode: resolve interned fields
+        for (FieldDecl fd : fiber.fields()) {
+            if (fd.modifier() != null && fd.modifier().type() == ModifierType.INTERNED && fd.modifier().pool() != null) {
+                List<String> pool = fd.modifier().pool();
+                for (JsonValue rec : records) {
+                    JsonValue val = rec.get(fd.name());
+                    if (val != null && val.isNumber()) {
+                        long idx = val.asLong();
+                        if (idx >= 0 && idx < pool.size()) {
+                            rec.put(fd.name(), JsonValue.of(pool.get((int) idx)));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Post-decode: evaluate computed fields
+        for (FieldDecl fd : fiber.fields()) {
+            if (fd.modifier() != null && fd.modifier().type() == ModifierType.COMPUTED && fd.modifier().expr() != null) {
+                Matcher cm = COMPUTED_EXPR_RX.matcher(fd.modifier().expr());
+                if (cm.matches()) {
+                    String leftName = cm.group(1);
+                    String op = cm.group(2);
+                    String rightName = cm.group(3);
+                    for (JsonValue rec : records) {
+                        JsonValue leftVal = rec.get(leftName);
+                        JsonValue rightVal = rec.get(rightName);
+                        if (leftVal != null && leftVal.isNumber() && rightVal != null && rightVal.isNumber()) {
+                            double a = leftVal.asDouble();
+                            double b = rightVal.asDouble();
+                            double result = switch (op) {
+                                case "+" -> a + b;
+                                case "-" -> a - b;
+                                case "*" -> a * b;
+                                default -> 0;
+                            };
+                            if (result == Math.floor(result)) {
+                                rec.put(fd.name(), JsonValue.of((long) result));
+                            } else {
+                                rec.put(fd.name(), JsonValue.of(result));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        JsonValue value = JsonValue.ofArray(records);
+        return new DecodeResult(fiber.name(), value);
     }
 
     /** Decode a DHOOM string into a JsonValue. */
@@ -544,6 +645,59 @@ public final class DhoomCodec {
         return deltaLen < absLen * 0.7;
     }
 
+    private static List<String> detectInterned(List<JsonValue> values) {
+        if (values.size() < 3) return null;
+        for (JsonValue v : values) {
+            if (v == null || !v.isString()) return null;
+        }
+        List<String> strs = values.stream().map(JsonValue::asString).toList();
+        List<String> distinct = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (String s : strs) {
+            if (seen.add(s)) distinct.add(s);
+        }
+        int maxDistinct = (int) Math.ceil(values.size() / 3.0);
+        if (distinct.size() < 2 || distinct.size() > maxDistinct) return null;
+        int rawLen = strs.stream().mapToInt(String::length).sum();
+        int poolLen = distinct.stream().mapToInt(String::length).sum() + distinct.size() - 1;
+        int indexLen = values.size();
+        if (poolLen + indexLen >= rawLen * 0.9) return null;
+        return distinct;
+    }
+
+    private static String detectComputed(String key, List<JsonValue> values, List<String> allKeys, List<JsonValue> records) {
+        if (values.isEmpty()) return null;
+        for (JsonValue v : values) {
+            if (v == null || v.isBoolean() || !v.isNumber()) return null;
+        }
+        String[] ops = {"+", "-", "*"};
+        for (String op : ops) {
+            for (String a : allKeys) {
+                if (a.equals(key)) continue;
+                for (String b : allKeys) {
+                    if (b.equals(key)) continue;
+                    boolean match = true;
+                    for (JsonValue r : records) {
+                        JsonValue av = r.get(a), bv = r.get(b), kv = r.get(key);
+                        if (av == null || !av.isNumber() || bv == null || !bv.isNumber() || kv == null || !kv.isNumber()) {
+                            match = false;
+                            break;
+                        }
+                        double expected = switch (op) {
+                            case "+" -> av.asDouble() + bv.asDouble();
+                            case "-" -> av.asDouble() - bv.asDouble();
+                            case "*" -> av.asDouble() * bv.asDouble();
+                            default -> 0;
+                        };
+                        if (kv.asDouble() != expected) { match = false; break; }
+                    }
+                    if (match) return a + op + b;
+                }
+            }
+        }
+        return null;
+    }
+
     private static String encodeBundle(String name, List<JsonValue> records, int indent) {
         String prefix = " ".repeat(indent);
         if (records.isEmpty()) return prefix + name + "{}:\n";
@@ -555,8 +709,12 @@ public final class DhoomCodec {
         Set<String> deltaKeys = new LinkedHashSet<>();
         Map<String, JsonValue> defaultKeys = new LinkedHashMap<>();
         Set<String> nestedKeys = new LinkedHashSet<>();
+        Map<String, List<String>> internedKeys = new LinkedHashMap<>();
+        Map<String, String> computedKeys = new LinkedHashMap<>();
         List<String> variableKeys = new ArrayList<>();
 
+        // Phase 1: categorize nested + arithmetic
+        List<String> remainingKeys = new ArrayList<>();
         for (String key : keys) {
             List<JsonValue> values = records.stream().map(r -> r.get(key)).toList();
 
@@ -575,9 +733,35 @@ public final class DhoomCodec {
                 continue;
             }
 
+            remainingKeys.add(key);
+        }
+
+        // Phase 2: detect computed fields among ALL remaining keys
+        List<String> computedToRemove = new ArrayList<>();
+        for (String key : remainingKeys) {
+            List<JsonValue> values = records.stream().map(r -> r.get(key)).toList();
+            String expr = detectComputed(key, values, remainingKeys, records);
+            if (expr != null) {
+                computedKeys.put(key, expr);
+                computedToRemove.add(key);
+            }
+        }
+        remainingKeys.removeAll(computedToRemove);
+
+        // Phase 3: categorize remaining as delta, interned, default, or variable
+        for (String key : remainingKeys) {
+            List<JsonValue> values = records.stream().map(r -> r.get(key)).toList();
+
             // Delta
             if (detectDelta(values)) {
                 deltaKeys.add(key);
+                continue;
+            }
+
+            // Interned
+            List<String> pool = detectInterned(values);
+            if (pool != null) {
+                internedKeys.put(key, pool);
                 continue;
             }
 
@@ -592,11 +776,16 @@ public final class DhoomCodec {
         }
 
         // Ensure at least one field produces record body content
-        if (variableKeys.isEmpty() && deltaKeys.isEmpty() && nestedKeys.isEmpty()) {
+        if (variableKeys.isEmpty() && deltaKeys.isEmpty() && nestedKeys.isEmpty() && internedKeys.isEmpty()) {
             for (String key : keys) {
                 if (arithmeticKeys.contains(key)) {
                     arithmeticKeys.remove(key);
                     orderedFields.removeIf(f -> f.name().equals(key));
+                    variableKeys.add(key);
+                    break;
+                }
+                if (computedKeys.containsKey(key)) {
+                    computedKeys.remove(key);
                     variableKeys.add(key);
                     break;
                 }
@@ -608,10 +797,26 @@ public final class DhoomCodec {
             }
         }
 
+        // Computed fields
+        for (String key : keys) {
+            if (computedKeys.containsKey(key)) {
+                orderedFields.add(new FieldDecl(key,
+                        new Modifier(ModifierType.COMPUTED, null, null, null, null, null, computedKeys.get(key), null)));
+            }
+        }
+
         // Delta fields
         for (String key : keys) {
             if (deltaKeys.contains(key)) {
                 orderedFields.add(new FieldDecl(key, new Modifier(ModifierType.DELTA)));
+            }
+        }
+
+        // Interned fields
+        for (String key : keys) {
+            if (internedKeys.containsKey(key)) {
+                orderedFields.add(new FieldDecl(key,
+                        new Modifier(ModifierType.INTERNED, null, null, null, null, internedKeys.get(key), null, null)));
             }
         }
 
@@ -642,7 +847,7 @@ public final class DhoomCodec {
 
         // Check sparsity
         List<String> nonArithKeys = keys.stream()
-                .filter(k -> !arithmeticKeys.contains(k) && !nestedKeys.contains(k))
+                .filter(k -> !arithmeticKeys.contains(k) && !nestedKeys.contains(k) && !computedKeys.containsKey(k))
                 .toList();
         boolean useSparse = false;
         if (nonArithKeys.size() >= 8) {
@@ -674,15 +879,26 @@ public final class DhoomCodec {
                     case NESTED -> s += ">";
                     case DELTA -> s += "^";
                     case MORPHISM -> s += "->" + fd.modifier().target();
+                    case INTERNED -> s += "&";
+                    case COMPUTED -> s += "#" + fd.modifier().expr();
+                    case CONSTRAINT -> s += "!" + fd.modifier().constraint();
                 }
             }
             headerParts.add(s);
         }
         sb.append(String.join(", ", headerParts)).append("}:\n");
 
+        // Emit pool lines
+        for (String key : keys) {
+            if (internedKeys.containsKey(key)) {
+                sb.append(prefix).append("&").append(key).append("[").append(String.join(", ", internedKeys.get(key))).append("]\n");
+            }
+        }
+
         // Emit records
         List<FieldDecl> recFieldsList = orderedFields.stream()
-                .filter(f -> f.modifier() == null || f.modifier().type() != ModifierType.ARITHMETIC)
+                .filter(f -> f.modifier() == null ||
+                        (f.modifier().type() != ModifierType.ARITHMETIC && f.modifier().type() != ModifierType.COMPUTED))
                 .toList();
 
         if (useSparse) {
@@ -740,6 +956,17 @@ public final class DhoomCodec {
                         } else {
                             values.add(String.valueOf(delta));
                         }
+                    }
+                } else if (rf.modifier() != null && rf.modifier().type() == ModifierType.INTERNED && rf.modifier().pool() != null) {
+                    if (val != null && val.isString()) {
+                        int idx = rf.modifier().pool().indexOf(val.asString());
+                        if (idx >= 0) {
+                            values.add(String.valueOf(idx));
+                        } else {
+                            values.add(valueToDhoom(val));
+                        }
+                    } else {
+                        values.add(valueToDhoom(val));
                     }
                 } else if (rf.modifier() != null && rf.modifier().type() == ModifierType.DEFAULT) {
                     if (jsonEqual(val, rf.modifier().defaultValue())) {
