@@ -4,149 +4,193 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DHOOM Demo — E-Commerce Orders</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Fira+Code:wght@400;500;600;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#1a1a2e;--surface:#16213e;--card:#0f3460;
-  --border:#30405a;--text:#e6edf3;--muted:#8b949e;
-  --accent:#58a6ff;--green:#3fb950;--purple:#bc8cff;
-  --orange:#e8a735;--red:#f85149;--teal:#4ec9b0;
-  --yellow:#dcdcaa;--blue:#569cd6;
-}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.6}
-a{color:var(--accent);text-decoration:none}
+::selection{background:#FF603040}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#28283C;border-radius:3px}
+body{background:#08060E;color:#D0D0E0;font-family:'Outfit',system-ui,sans-serif;line-height:1.6}
+a{color:#FF6030;text-decoration:none}
 a:hover{text-decoration:underline}
+code,.mono{font-family:'Fira Code',monospace}
 
-/* Header */
-.hero{text-align:center;padding:3rem 1.5rem 2rem;background:linear-gradient(135deg,#0f3460 0%,#1a1a2e 50%,#16213e 100%)}
-.hero .badge{display:inline-block;background:var(--accent);color:#000;font-weight:700;font-size:.75rem;padding:.2rem .6rem;border-radius:4px;letter-spacing:.5px;margin-bottom:1rem}
-.hero h1{font-size:2.5rem;font-weight:300;letter-spacing:-.02em}
-.hero h1 b{font-weight:700}
-.hero .sub{color:var(--muted);font-size:1.1rem;margin-top:.5rem;max-width:600px;margin-left:auto;margin-right:auto}
+/* ── Hero ─────────────────────────────────── */
+.hero{text-align:center;padding:56px 20px 40px;background:linear-gradient(180deg,#120A1C,#08060E);position:relative;overflow:hidden}
+.hero-glow{position:absolute;top:-80px;left:50%;transform:translateX(-50%);width:500px;height:500px;background:radial-gradient(circle,rgba(255,80,40,0.07),transparent 60%);pointer-events:none}
+.hero .badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.12em;color:#FF6030;text-transform:uppercase;font-family:'Fira Code',monospace;margin-bottom:12px}
+.hero h1{font-size:52px;font-weight:900;line-height:1;background:linear-gradient(135deg,#FF6832,#FF3020 50%,#CC1808);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.05em;margin:0}
+.hero .sub{font-size:16px;color:#8888A0;margin:18px auto 0;max-width:560px;line-height:1.6}
+.hero .sub strong{color:#C0C0D0}
+.hero .sub em{color:#FF6030;font-style:normal;font-weight:700}
 
-/* Stats */
-.stats{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;padding:1.5rem;max-width:800px;margin:0 auto}
-.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem;text-align:center;min-width:140px;flex:1}
-.stat .num{font-size:1.8rem;font-weight:700;line-height:1.2}
-.stat .num.green{color:var(--green)}
-.stat .num.accent{color:var(--accent)}
-.stat .num.purple{color:var(--purple)}
-.stat .num.orange{color:var(--orange)}
-.stat .label{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;margin-top:.25rem}
+/* ── Tabs ─────────────────────────────────── */
+.tab-bar{display:flex;gap:4px;justify-content:center;margin:32px auto 0;flex-wrap:wrap}
+.tab-btn{padding:8px 18px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:#606078;font-size:13px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .2s}
+.tab-btn:hover{border-color:rgba(255,96,48,0.2);color:#9090A8}
+.tab-btn.active{background:linear-gradient(135deg,#FF6030,#E83018);border-color:transparent;color:#fff;font-weight:700}
 
-/* Comparison */
-.comparison{display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:1200px;margin:2rem auto;padding:0 1.5rem}
-@media(max-width:900px){.comparison{grid-template-columns:1fr}}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.panel-head{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-weight:600;font-size:.9rem}
-.panel-head .dot{width:8px;height:8px;border-radius:50%}
-.panel pre{padding:1rem;overflow-x:auto;font-size:.82rem;line-height:1.65;font-family:'Cascadia Code','Fira Code','Consolas',monospace;white-space:pre;tab-size:2}
+/* ── Stats ─────────────────────────────────── */
+.stats-bar{max-width:760px;margin:28px auto 0;background:linear-gradient(135deg,rgba(255,96,48,0.06),rgba(255,48,24,0.03));border:1px solid rgba(255,96,48,0.12);border-radius:12px;padding:20px 24px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center}
+.stat-val{font-size:28px;font-weight:900;letter-spacing:-.03em;color:#D0D0E0}
+.stat-val.fire{background:linear-gradient(135deg,#FF6832,#FF3020);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-label{font-size:11px;font-weight:600;color:#606078;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;font-family:'Fira Code',monospace}
+
+/* ── Panels ───────────────────────────────── */
+.section{max-width:1100px;margin:0 auto;padding:0 20px}
+.section-title{font-size:16px;font-weight:700;color:#B0B0C8;margin:36px 0 14px;display:flex;align-items:center;gap:8px}
+.section-title .dot{width:6px;height:6px;border-radius:50%;background:#FF6030}
+.panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.04);border-radius:10px;overflow:hidden}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:13px;font-weight:600;color:#9090A8}
+.panel-head .lang{display:flex;align-items:center;gap:6px}
+.panel-head .lang .dot{width:8px;height:8px;border-radius:50%}
+.panel-head .size{font-family:'Fira Code',monospace;font-size:11px;color:#505068}
+.panel pre{padding:14px 16px;overflow-x:auto;font-size:12px;line-height:1.65;font-family:'Fira Code',monospace;white-space:pre;tab-size:2;margin:0;color:#9898B0}
 .panel pre code{display:block}
 
-/* Syntax highlighting */
-.hi-arith{color:var(--teal);font-weight:600}
-.hi-intern{color:var(--orange);font-weight:600}
-.hi-pool{color:var(--orange)}
-.hi-default{color:var(--yellow)}
-.hi-nest{color:var(--green);font-weight:600}
-.hi-computed{color:var(--purple);font-weight:600}
-.hi-constr{color:var(--blue)}
-.hi-dev{color:var(--red);font-weight:600}
-.hi-idx{color:var(--orange);opacity:.8}
-.hi-field{color:#9cdcfe}
-.hi-bundle{color:var(--text);font-weight:600}
-.hi-brace{color:var(--muted)}
-.json-key{color:#9cdcfe}
-.json-str{color:#ce9178}
-.json-num{color:#b5cea8}
+/* ── Syntax highlighting ──────────────────── */
+.h-at{color:#4EC9B0;font-weight:600}
+.h-amp{color:#FF6030;font-weight:600}
+.h-pool{color:#E8A735}
+.h-def{color:#DCDCAA}
+.h-nest{color:#3FB950;font-weight:600}
+.h-comp{color:#BC8CFF;font-weight:600}
+.h-con{color:#569CD6}
+.h-dev{color:#F85149;font-weight:600}
+.h-idx{color:#E8A735;opacity:.85}
+.j-key{color:#9CDCFE}
+.j-str{color:#CE9178}
+.j-num{color:#B5CEA8}
+.j-bool{color:#569CD6}
 
-/* Legend */
-.legend{max-width:1200px;margin:2rem auto;padding:0 1.5rem}
-.legend h2{font-size:1.2rem;margin-bottom:1rem;font-weight:600}
-.legend-grid{display:flex;flex-wrap:wrap;gap:.5rem}
-.tag{display:inline-flex;align-items:center;gap:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.35rem .75rem;font-size:.82rem}
-.tag .sigil{font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-weight:700;font-size:.9rem}
+/* ── Feature Legend ───────────────────────── */
+.legend-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.feat-card{background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.035);border-radius:8px;padding:14px 14px;cursor:pointer;transition:border-color .2s,background .2s;position:relative;overflow:hidden}
+.feat-card:hover{border-color:rgba(255,96,48,0.2);background:rgba(255,96,48,0.03)}
+.feat-card.active{border-color:rgba(255,96,48,0.35);background:rgba(255,96,48,0.06)}
+.feat-card .sigil{font-size:20px;font-family:'Fira Code',monospace;font-weight:700}
+.feat-card .ft{font-size:13px;font-weight:700;color:#B0B0C8;margin:6px 0 3px}
+.feat-card .fd{font-size:11px;color:#606078;line-height:1.5}
+.feat-card .where{font-size:10px;margin-top:6px;padding:2px 6px;border-radius:3px;background:#FF603012;color:#FF6030;font-family:'Fira Code',monospace;font-weight:600;display:inline-block}
+.hi-pulse{position:absolute;inset:0;background:rgba(255,96,48,0.08);animation:pulse-fade .6s ease-out forwards;pointer-events:none}
+@keyframes pulse-fade{0%{opacity:1}100%{opacity:0}}
 
-/* Orders */
-.orders-section{max-width:1200px;margin:2.5rem auto;padding:0 1.5rem}
-.orders-section h2{font-size:1.2rem;margin-bottom:1rem;font-weight:600}
-.order-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
-.order-head{display:flex;align-items:center;gap:1rem;padding:.85rem 1rem;cursor:pointer;flex-wrap:wrap}
-.order-head:hover{background:rgba(88,166,255,.05)}
-.order-id{font-family:monospace;font-weight:700;color:var(--teal);font-size:.95rem}
-.order-customer{flex:1;min-width:120px}
-.order-badge{font-size:.72rem;padding:.15rem .5rem;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
-.order-badge.delivered{background:rgba(63,185,80,.15);color:var(--green)}
-.order-badge.shipped{background:rgba(88,166,255,.15);color:var(--accent)}
-.order-badge.processing{background:rgba(232,167,53,.15);color:var(--orange)}
-.order-payment{color:var(--muted);font-size:.82rem}
-.order-shipping{color:var(--muted);font-size:.82rem}
-.order-total{font-weight:700;color:var(--green);font-size:.95rem;min-width:60px;text-align:right}
-.order-items{border-top:1px solid var(--border);padding:.5rem 1rem .75rem}
-.items-table{width:100%;font-size:.82rem;border-collapse:collapse}
-.items-table th{text-align:left;color:var(--muted);font-weight:500;padding:.35rem .5rem;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}
-.items-table td{padding:.35rem .5rem;border-top:1px solid rgba(48,64,90,.5)}
-.items-table td:last-child{text-align:right;font-weight:600;color:var(--green)}
-.items-table td:nth-child(3){text-align:right}
-.items-table td:nth-child(2){text-align:center}
-.chevron{color:var(--muted);font-size:.7rem;transition:transform .2s}
+/* ── Order cards ──────────────────────────── */
+.order-card{background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.04);border-radius:10px;margin-bottom:8px;overflow:hidden;transition:border-color .2s}
+.order-card:hover{border-color:rgba(255,255,255,0.08)}
+.order-head{display:flex;align-items:center;gap:12px;padding:12px 14px;cursor:pointer;flex-wrap:wrap}
+.order-id{font-family:'Fira Code',monospace;font-weight:700;color:#4EC9B0;font-size:13px;min-width:90px}
+.order-cust{flex:1;min-width:100px;font-weight:500}
+.order-badge{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-family:'Fira Code',monospace}
+.order-badge.delivered{background:rgba(63,185,80,.12);color:#3FB950}
+.order-badge.shipped{background:rgba(88,166,255,.12);color:#58A6FF}
+.order-badge.processing{background:rgba(255,96,48,.12);color:#FF6030}
+.order-meta{color:#505068;font-size:12px;font-family:'Fira Code',monospace}
+.order-total{font-weight:800;color:#3FB950;font-size:15px;min-width:65px;text-align:right;font-family:'Fira Code',monospace}
+.chevron{color:#505068;font-size:10px;transition:transform .2s}
 .chevron.open{transform:rotate(90deg)}
+.order-body{border-top:1px solid rgba(255,255,255,0.04);padding:10px 14px 14px;display:none}
+.order-body.show{display:block}
+.items-table{width:100%;font-size:12px;border-collapse:collapse}
+.items-table th{text-align:left;color:#505068;font-weight:600;padding:4px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;font-family:'Fira Code',monospace}
+.items-table td{padding:6px 8px;border-top:1px solid rgba(255,255,255,0.025)}
+.items-table td:last-child{text-align:right;font-weight:700;color:#3FB950;font-family:'Fira Code',monospace}
+.items-table td:nth-child(3),.items-table td:nth-child(2){text-align:center;font-family:'Fira Code',monospace;color:#9090A8}
+.items-table .comp-tag{font-size:9px;color:#BC8CFF;font-family:'Fira Code',monospace;margin-left:4px;opacity:.7}
 
-/* Footer */
-footer{text-align:center;padding:2.5rem 1.5rem;color:var(--muted);font-size:.85rem}
-footer a{color:var(--accent)}
+/* ── Footer ───────────────────────────────── */
+footer{text-align:center;padding:48px 20px;color:#505068;font-size:13px}
+footer a{color:#FF6030;font-weight:600}
+footer .vbadge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:3px;background:#FF603012;color:#FF6030;font-family:'Fira Code',monospace;font-weight:600;margin-left:6px}
+
+/* ── Responsive ───────────────────────────── */
+@media(max-width:768px){
+  .hero h1{font-size:36px}
+  .stats-bar{grid-template-columns:repeat(2,1fr);padding:16px}
+  .stat-val{font-size:22px}
+  .panel-grid{grid-template-columns:1fr}
+  .legend-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .legend-grid{grid-template-columns:1fr}
+  .tab-btn{padding:6px 12px;font-size:12px}
+}
 </style>
 </head>
 <body>
 
+<!-- ═══ Hero ═══ -->
 <div class="hero">
-  <div class="badge">SAMPLE APPLICATION</div>
-  <h1><b>DHOOM</b> in Action</h1>
-  <p class="sub">E-Commerce Order Management — a real-world dataset showcasing 7 DHOOM features in a single file</p>
-</div>
-
-<div class="stats">
-  <div class="stat"><div class="num accent" id="dhoom-size">—</div><div class="label">DHOOM bytes</div></div>
-  <div class="stat"><div class="num" id="json-size">—</div><div class="label">JSON bytes</div></div>
-  <div class="stat"><div class="num green" id="savings">—</div><div class="label">Smaller</div></div>
-  <div class="stat"><div class="num purple">7</div><div class="label">Features used</div></div>
-</div>
-
-<div class="comparison">
-  <div class="panel">
-    <div class="panel-head"><div class="dot" style="background:var(--accent)"></div> ecommerce.dhoom</div>
-    <pre><code id="dhoom-code"></code></pre>
-  </div>
-  <div class="panel">
-    <div class="panel-head"><div class="dot" style="background:var(--orange)"></div> equivalent JSON</div>
-    <pre><code id="json-code"></code></pre>
+  <div class="hero-glow"></div>
+  <div style="position:relative;max-width:680px;margin:0 auto">
+    <div class="badge">SAMPLE APPLICATION</div>
+    <h1>DHOOM</h1>
+    <p class="sub">E-Commerce Order Management — a real-world dataset showcasing <em>7 features</em> in a <strong>single file</strong></p>
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="showTab('compare')">Side-by-Side</button>
+      <button class="tab-btn" onclick="showTab('decoded')">Live Data</button>
+      <button class="tab-btn" onclick="showTab('anatomy')">Anatomy</button>
+    </div>
   </div>
 </div>
 
-<div class="legend">
-  <h2>Feature Legend</h2>
-  <div class="legend-grid">
-    <div class="tag"><span class="sigil" style="color:var(--teal)">@</span> Arithmetic — auto-incrementing IDs</div>
-    <div class="tag"><span class="sigil" style="color:var(--orange)">&amp;</span> Interning — deduplicated string pool</div>
-    <div class="tag"><span class="sigil" style="color:var(--purple)">#</span> Computed — derived field (price×qty)</div>
-    <div class="tag"><span class="sigil" style="color:var(--yellow)">|</span> Default — modal value compression</div>
-    <div class="tag"><span class="sigil" style="color:var(--green)">&gt;</span> Nesting — hierarchical sub-bundles</div>
-    <div class="tag"><span class="sigil" style="color:var(--blue)">!</span> Constraint — inline type validation</div>
-    <div class="tag"><span class="sigil" style="color:var(--red)">:</span> Deviation — overrides a default</div>
+<!-- ═══ Stats ═══ -->
+<div class="stats-bar" id="stats-bar">
+  <div><div class="stat-val fire" id="s-savings">—</div><div class="stat-label">Smaller</div></div>
+  <div><div class="stat-val" id="s-dhoom">—</div><div class="stat-label">DHOOM</div></div>
+  <div><div class="stat-val" id="s-json">—</div><div class="stat-label">JSON</div></div>
+  <div><div class="stat-val fire">7</div><div class="stat-label">Features</div></div>
+</div>
+
+<!-- ═══ Tab: Compare ═══ -->
+<div class="section" id="tab-compare">
+  <div class="section-title"><span class="dot"></span> Format Comparison</div>
+  <div class="panel-grid">
+    <div class="panel">
+      <div class="panel-head"><span class="lang"><span class="dot" style="background:#FF6030"></span> ecommerce.dhoom</span><span class="size" id="dhoom-bytes"></span></div>
+      <pre><code id="dhoom-code"></code></pre>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="lang"><span class="dot" style="background:#E8A735"></span> equivalent JSON</span><span class="size" id="json-bytes"></span></div>
+      <pre><code id="json-code"></code></pre>
+    </div>
   </div>
 </div>
 
-<div class="orders-section">
-  <h2>Decoded Data</h2>
+<!-- ═══ Tab: Decoded ═══ -->
+<div class="section" id="tab-decoded" style="display:none">
+  <div class="section-title"><span class="dot"></span> Decoded Orders — click any row to expand</div>
   <div id="orders"></div>
 </div>
 
+<!-- ═══ Tab: Anatomy ═══ -->
+<div class="section" id="tab-anatomy" style="display:none">
+  <div class="section-title"><span class="dot"></span> Feature Anatomy — click a feature to highlight it in the DHOOM source</div>
+  <div class="legend-grid" id="legend"></div>
+  <div style="margin-top:16px">
+    <div class="panel">
+      <div class="panel-head"><span class="lang"><span class="dot" style="background:#FF6030"></span> ecommerce.dhoom</span><span class="size" style="font-style:italic;color:#FF603080">click a feature above ↑</span></div>
+      <pre><code id="anatomy-code"></code></pre>
+    </div>
+  </div>
+</div>
+
 <footer>
-  Built with <a href="https://dhoom.dev">DHOOM</a> — Davis Human-readable Optimized Object Markup
+  Built with <a href="https://dhoom.dev">DHOOM</a><span class="vbadge">v0.5</span><br>
+  <span style="font-size:11px;margin-top:6px;display:inline-block">
+    <a href="https://github.com/nurdymuny/dhoom" style="color:#606078">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="https://dhoom.dev" style="color:#606078">Documentation</a>
+  </span>
 </footer>
 
 <script>
-// ── Data ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════
 const dhoomSrc = `orders{id@ORD-2001, customer!str, payment&, shipping&, status|delivered, items>}:
 &payment[credit_card, paypal, bank_transfer]
 &shipping[standard, express, overnight]
@@ -185,84 +229,184 @@ const orders = [
    items:[{name:"Noise-Canceling Headphones",qty:1,price:200,total:200},{name:"Headphone Stand",qty:1,price:30,total:30}]}
 ];
 
-// ── Stats ───────────────────────────────────────────
+const FEATURES = [
+  {sigil:"@", name:"Arithmetic", desc:"Order IDs auto-increment from ORD-2001. No need to repeat them.", color:"#4EC9B0",
+   lines:[0], regex:/@[\w-]+/g},
+  {sigil:"&", name:"String Interning", desc:"Payment and shipping methods stored once in a pool. Records use integer indices.", color:"#FF6030",
+   lines:[0,1,2,3,7,11,15,19], regex:/&|&amp;/g},
+  {sigil:"#", name:"Computed Field", desc:"total = price × qty. Derived automatically — omitted from record lines.", color:"#BC8CFF",
+   lines:[4,8,12,16,20], regex:/#[\w*]+/g},
+  {sigil:"|", name:"Modal Default", desc:'status defaults to "delivered". Only 2 orders override it.', color:"#DCDCAA",
+   lines:[0], regex:/\|[\w]+/g},
+  {sigil:">", name:"Nesting", desc:"Line items are sub-bundles nested inside each parent order.", color:"#3FB950",
+   lines:[0,4,8,12,16,20], regex:/>/g},
+  {sigil:"!", name:"Constraint", desc:"customer!str — inline type annotation. Metadata only, no encoding change.", color:"#569CD6",
+   lines:[0], regex:/![\w:\/]+/g},
+  {sigil:":", name:"Deviation", desc:':shipped and :processing override the default "delivered" status.', color:"#F85149",
+   lines:[7,15], regex:/:(?:shipped|processing)/g},
+];
+
+// ═══════════════════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════════════════
 const jsonObj = {orders};
+const jsonPretty = JSON.stringify(jsonObj, null, 2);
 const jsonMin = JSON.stringify(jsonObj);
 const dhoomBytes = new TextEncoder().encode(dhoomSrc).length;
 const jsonBytes = new TextEncoder().encode(jsonMin).length;
 const pct = Math.round((1 - dhoomBytes / jsonBytes) * 100);
-document.getElementById("dhoom-size").textContent = dhoomBytes + "B";
-document.getElementById("json-size").textContent = jsonBytes > 999 ? (jsonBytes/1000).toFixed(1)+"KB" : jsonBytes+"B";
-document.getElementById("savings").textContent = pct + "%";
+document.getElementById("s-savings").textContent = pct + "%";
+document.getElementById("s-dhoom").textContent = dhoomBytes + "B";
+document.getElementById("s-json").textContent = jsonBytes > 999 ? (jsonBytes/1000).toFixed(1)+"KB" : jsonBytes+"B";
+document.getElementById("dhoom-bytes").textContent = dhoomBytes + " bytes";
+document.getElementById("json-bytes").textContent = jsonBytes + " bytes (minified)";
 
-// ── Syntax-highlighted DHOOM ────────────────────────
-function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;")}
-function hiDhoom(src){
-  return src.split("\n").map(line => {
+// ═══════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════
+let currentTab = "compare";
+function showTab(id) {
+  ["compare","decoded","anatomy"].forEach(t => {
+    document.getElementById("tab-" + t).style.display = t === id ? "block" : "none";
+  });
+  document.querySelectorAll(".tab-btn").forEach((btn, i) => {
+    btn.classList.toggle("active", ["compare","decoded","anatomy"][i] === id);
+  });
+  currentTab = id;
+}
+
+// ═══════════════════════════════════════════════════
+// SYNTAX HIGHLIGHTING
+// ═══════════════════════════════════════════════════
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+function highlightDhoom(src, activeFeature) {
+  const lines = src.split("\n");
+  const activeLines = activeFeature ? new Set(activeFeature.lines) : null;
+  return lines.map((line, li) => {
     const t = line.trim();
+    const dimmed = activeLines && !activeLines.has(li);
+    const opacity = dimmed ? ' style="opacity:0.25"' : '';
+    let e;
     // Pool lines
     if (t.startsWith("&")) {
-      const e = esc(line);
-      return `<span class="hi-pool">${e}</span>`;
+      e = `<span class="h-pool">${esc(line)}</span>`;
+      return `<span${opacity}>${e}</span>`;
     }
     // Header lines
     if (t.includes("{") && t.includes("}")) {
-      let e = esc(line);
-      e = e.replace(/@[\w-]+(\+\d+)?/g, '<span class="hi-arith">$&</span>');
-      e = e.replace(/![\w:\/]+/g, '<span class="hi-constr">$&</span>');
-      e = e.replace(/#[\w*+\-]+/g, '<span class="hi-computed">$&</span>');
-      e = e.replace(/\|[\w]+/g, '<span class="hi-default">$&</span>');
-      e = e.replace(/(\w)&amp;/g, '$1<span class="hi-intern">&amp;</span>');
-      e = e.replace(/&gt;(?=})/g, '<span class="hi-nest">&gt;</span>');
-      return e;
+      e = esc(line);
+      e = e.replace(/@[\w-]+(\+\d+)?/g, '<span class="h-at">$&</span>');
+      e = e.replace(/![\w:\/]+/g, '<span class="h-con">$&</span>');
+      e = e.replace(/#[\w*+\-]+/g, '<span class="h-comp">$&</span>');
+      e = e.replace(/\|[\w]+/g, '<span class="h-def">$&</span>');
+      e = e.replace(/(\w)&amp;/g, '$1<span class="h-amp">&amp;</span>');
+      e = e.replace(/&gt;(?=}|,)/g, '<span class="h-nest">&gt;</span>');
+      return `<span${opacity}>${e}</span>`;
     }
     // Record lines
-    let e = esc(line);
-    e = e.replace(/:(\w+)/g, '<span class="hi-dev">:$1</span>');
-    // Highlight lone integers (pool indices) after customer name in parent records
+    e = esc(line);
+    e = e.replace(/:(\w+)/g, '<span class="h-dev">:$1</span>');
     if (!t.startsWith(" ") && t.match(/,\s*\d+\s*,\s*\d+/)) {
-      e = e.replace(/,\s*(\d)\s*,\s*(\d)/g, ', <span class="hi-idx">$1</span>, <span class="hi-idx">$2</span>');
+      e = e.replace(/,\s*(\d)\s*,\s*(\d)/g, ', <span class="h-idx">$1</span>, <span class="h-idx">$2</span>');
     }
-    return e;
+    return `<span${opacity}>${e}</span>`;
   }).join("\n");
 }
-document.getElementById("dhoom-code").innerHTML = hiDhoom(dhoomSrc);
 
-// ── Formatted JSON ──────────────────────────────────
-function hiJson(obj) {
-  const s = JSON.stringify(obj, null, 2);
-  return s
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/"([^"]+)"(?=\s*:)/g, '<span class="json-key">"$1"</span>')
-    .replace(/:\s*"([^"]*)"/g, ': <span class="json-str">"$1"</span>')
-    .replace(/:\s*(\d+)/g, ': <span class="json-num">$1</span>');
+function highlightJson(obj) {
+  return JSON.stringify(obj, null, 2)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/"([^"]+)"(?=\s*:)/g, '<span class="j-key">"$1"</span>')
+    .replace(/:\s*"([^"]*)"/g, ': <span class="j-str">"$1"</span>')
+    .replace(/:\s*(\d+)/g, ': <span class="j-num">$1</span>')
+    .replace(/:\s*(true|false)/g, ': <span class="j-bool">$1</span>');
 }
-document.getElementById("json-code").innerHTML = hiJson(jsonObj);
 
-// ── Order cards ─────────────────────────────────────
-const el = document.getElementById("orders");
-orders.forEach(o => {
-  const orderTotal = o.items.reduce((s,i) => s + i.total, 0);
+document.getElementById("dhoom-code").innerHTML = highlightDhoom(dhoomSrc);
+document.getElementById("json-code").innerHTML = highlightJson(jsonObj);
+document.getElementById("anatomy-code").innerHTML = highlightDhoom(dhoomSrc);
+
+// ═══════════════════════════════════════════════════
+// FEATURE LEGEND (INTERACTIVE)
+// ═══════════════════════════════════════════════════
+let activeFeatureIdx = -1;
+const legendEl = document.getElementById("legend");
+FEATURES.forEach((f, i) => {
+  const card = document.createElement("div");
+  card.className = "feat-card";
+  card.innerHTML = `
+    <span class="sigil" style="color:${f.color}">${f.sigil === "&" ? "&amp;" : esc(f.sigil)}</span>
+    <div class="ft">${f.name}</div>
+    <div class="fd">${f.desc}</div>
+    <div class="where">lines: ${f.lines.map(l => l + 1).join(", ")}</div>`;
+  card.onclick = () => {
+    if (activeFeatureIdx === i) {
+      activeFeatureIdx = -1;
+      card.classList.remove("active");
+      document.getElementById("anatomy-code").innerHTML = highlightDhoom(dhoomSrc);
+    } else {
+      legendEl.querySelectorAll(".feat-card").forEach(c => c.classList.remove("active"));
+      activeFeatureIdx = i;
+      card.classList.add("active");
+      document.getElementById("anatomy-code").innerHTML = highlightDhoom(dhoomSrc, f);
+      // Pulse effect
+      const pulse = document.createElement("div");
+      pulse.className = "hi-pulse";
+      card.appendChild(pulse);
+      setTimeout(() => pulse.remove(), 600);
+    }
+  };
+  legendEl.appendChild(card);
+});
+
+// ═══════════════════════════════════════════════════
+// ORDER CARDS (INTERACTIVE)
+// ═══════════════════════════════════════════════════
+const ordersEl = document.getElementById("orders");
+orders.forEach((o, oi) => {
+  const orderTotal = o.items.reduce((s, i) => s + i.total, 0);
   const card = document.createElement("div");
   card.className = "order-card";
+  const bodyId = "body-" + oi;
   card.innerHTML = `
-    <div class="order-head" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.chevron').classList.toggle('open')">
-      <span class="chevron">&#9654;</span>
+    <div class="order-head" id="head-${oi}">
+      <span class="chevron" id="chev-${oi}">&#9654;</span>
       <span class="order-id">${o.id}</span>
-      <span class="order-customer">${o.customer}</span>
+      <span class="order-cust">${o.customer}</span>
       <span class="order-badge ${o.status}">${o.status}</span>
-      <span class="order-payment">${o.payment.replace(/_/g," ")}</span>
-      <span class="order-shipping">${o.shipping}</span>
+      <span class="order-meta">${o.payment.replace(/_/g, " ")}</span>
+      <span class="order-meta">${o.shipping}</span>
       <span class="order-total">$${orderTotal}</span>
     </div>
-    <div class="order-items" style="display:none">
+    <div class="order-body" id="${bodyId}">
       <table class="items-table">
-        <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
-        ${o.items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>$${i.price}</td><td>$${i.total}</td></tr>`).join("")}
+        <tr><th>Product</th><th>Qty</th><th>Unit Price</th><th>Total <span class="comp-tag">#price*qty</span></th></tr>
+        ${o.items.map(it => `<tr>
+          <td>${it.name}</td>
+          <td>${it.qty}</td>
+          <td>$${it.price}</td>
+          <td>$${it.total}</td>
+        </tr>`).join("")}
+        <tr style="border-top:1px solid rgba(255,255,255,0.06)">
+          <td colspan="3" style="text-align:right;color:#606078;font-weight:600">Order Total</td>
+          <td style="font-size:14px">$${orderTotal}</td>
+        </tr>
       </table>
     </div>`;
-  el.appendChild(card);
+  card.querySelector(".order-head").onclick = () => {
+    const body = document.getElementById(bodyId);
+    const chev = document.getElementById("chev-" + oi);
+    const isOpen = body.classList.contains("show");
+    body.classList.toggle("show");
+    chev.classList.toggle("open");
+  };
+  ordersEl.appendChild(card);
 });
+
+// Open first order by default
+document.getElementById("body-0").classList.add("show");
+document.getElementById("chev-0").classList.add("open");
 </script>
 </body>
 </html>
