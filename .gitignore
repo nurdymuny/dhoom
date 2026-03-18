@@ -30,3 +30,4 @@ packages/dhoom-java/build/
 
 # Python eggs
 *.egg-info/
+packages/dhoom-java/out/

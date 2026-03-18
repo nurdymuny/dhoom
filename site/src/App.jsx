@@ -743,6 +743,7 @@ function NavBar({ page, setPage }) {
     { id: "getting-started", l: "Guide" },
     { id: "syntax", l: "Reference" },
     { id: "comparison", l: "Compare" },
+    { id: "demo", l: "Demo", href: "/demo.html" },
   ];
   return (
     <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "rgba(8,6,14,0.94)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255,255,255,0.04)", padding: "0 16px" }}>
@@ -750,6 +751,7 @@ function NavBar({ page, setPage }) {
         <div style={{ display: "flex", alignItems: "center", gap: mob ? 0 : 24 }}>
           <span onClick={() => { setPage("home"); setMenuOpen(false); }} style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-0.04em", cursor: "pointer", background: "linear-gradient(135deg,#FF6030,#FF3818)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>DHOOM</span>
           {!mob && navItems.map(n => {
+            if (n.href) return <a key={n.id} href={n.href} style={{ textDecoration: "none", padding: "6px 10px", color: "#606078", fontSize: 13, fontWeight: 500 }}>{n.l}</a>;
             const active = page === n.id || (DOCS[page] && DOCS[page].cat === "Guide" && n.id === "getting-started") || (DOCS[page] && DOCS[page].cat === "Reference" && n.id === "syntax") || (DOCS[page] && DOCS[page].cat === "Ecosystem" && n.id === "migration");
             return <button key={n.id} onClick={() => setPage(n.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 10px", color: active ? "#FF6030" : "#606078", fontSize: 13, fontWeight: 500 }}>{n.l}</button>;
           })}
@@ -763,6 +765,7 @@ function NavBar({ page, setPage }) {
       {mob && menuOpen && (
         <div style={{ paddingBottom: 12, borderTop: "1px solid rgba(255,255,255,0.04)" }}>
           {navItems.map(n => {
+            if (n.href) return <a key={n.id} href={n.href} style={{ display: "block", textDecoration: "none", padding: "10px 8px", color: "#808098", fontSize: 14, fontWeight: 500, borderBottom: "1px solid rgba(255,255,255,0.02)" }}>{n.l}</a>;
             const active = page === n.id || (DOCS[page] && DOCS[page].cat === "Guide" && n.id === "getting-started") || (DOCS[page] && DOCS[page].cat === "Reference" && n.id === "syntax") || (DOCS[page] && DOCS[page].cat === "Ecosystem" && n.id === "migration");
             return <button key={n.id} onClick={() => { setPage(n.id); setMenuOpen(false); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "10px 8px", color: active ? "#FF6030" : "#808098", fontSize: 14, fontWeight: 500, borderBottom: "1px solid rgba(255,255,255,0.02)" }}>{n.l}</button>;
           })}
