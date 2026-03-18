@@ -1052,7 +1052,7 @@ export default function DhoomDev() {
             <button onClick={() => setPage("playground")} style={{ padding: "12px 28px", borderRadius: 8, border: "none", cursor: "pointer", background: "linear-gradient(135deg,#FF6030,#E83018)", color: "#fff", fontSize: 14, fontWeight: 700 }}>Open Playground</button>
           </div>
           <div style={{ padding: "20px", textAlign: "center", fontSize: 11, color: "#242438", fontFamily: "'Fira Code',monospace", borderTop: "1px solid rgba(255,255,255,0.02)" }}>
-            <div>DHOOM · Davis Geometric · 2026 · <a href="https://github.com/nurdymuny/dhoom" target="_blank" rel="noopener noreferrer" style={{ color: "#383850", textDecoration: "none" }}>GitHub</a></div>
+            <div>Davis Geometric · Built on the Davis Field Equations · <a href="https://davisgeometric.com/gigi" target="_blank" rel="noopener noreferrer" style={{ color: "#383850", textDecoration: "none" }}>Runs on GIGI</a> · Patent Pending · © 2026</div>
             <div style={{ marginTop: 6, fontSize: 9, color: "#1C1C2C", lineHeight: 1.5 }}>U.S. Patent Application 64/008,940 · Filed 03/18/2026<br/>System and Method for Human-Readable Data Serialization via Fiber Bundle Geometry<br/>with Positional Encoding and Trailing Default Elision</div>
           </div>
         </>
