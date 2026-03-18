@@ -4,6 +4,7 @@
 
 [![SPEC v0.5](https://img.shields.io/badge/spec-v0.5-E8A830?labelColor=1b1b1f)](SPEC.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-E8A830?labelColor=1b1b1f)](LICENSE)
+[![Patent Pending](https://img.shields.io/badge/patent-pending-BC8CFF?labelColor=1b1b1f)]()
 
 **DHOOM** is a compact, human-readable serialization format that applies fiber bundle geometry to structured data. It encodes the same data model as JSON — objects, arrays, strings, numbers, booleans, null — but eliminates structural redundancy by exploiting arithmetic indices, modal defaults, and positional encoding.
 
@@ -373,6 +374,12 @@ For the mathematical framework, see:
 ## License
 
 [MIT](LICENSE)
+
+## Patent
+
+U.S. Patent Application No. 64/008,940 · Filed March 18, 2026
+
+> **System and Method for Human-Readable Data Serialization via Fiber Bundle Geometry with Positional Encoding and Trailing Default Elision**
 
 ---
 
