@@ -1288,6 +1288,225 @@ fn detect_computed_field(key: &str, records: &[Value], candidate_keys: &[String]
     None
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Profile API — geometric data analysis (ported from GIGI convert.rs)
+// ═══════════════════════════════════════════════════════════════════
+
+/// Classification of a field's geometric role in the fiber bundle.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldRole {
+    /// Arithmetic progression — values derived from index, zero curvature
+    Arithmetic { start: String, step: i64 },
+    /// Modal default — most records share this value
+    Default { value: String, match_pct: f64 },
+    /// Delta-encoded — sequential differences are smaller than absolutes
+    Delta,
+    /// String-interned — categorical field with a finite pool
+    Interned { pool_size: usize },
+    /// Computed — derivable from other fields
+    Computed { expr: String },
+    /// Nested sub-bundle
+    Nested,
+    /// Regular variable field
+    Variable,
+}
+
+/// Per-field curvature analysis.
+#[derive(Debug, Clone)]
+pub struct FieldProfile {
+    pub name: String,
+    pub role: FieldRole,
+    /// Scalar curvature K = Var / range². Low K = predictable = compresses well.
+    pub curvature: f64,
+    /// Confidence C = 1 / (1 + K). High confidence = low curvature.
+    pub confidence: f64,
+}
+
+/// Geometric profile of a dataset — analyze before encoding.
+#[derive(Debug, Clone)]
+pub struct Profile {
+    pub collection: String,
+    pub record_count: usize,
+    pub field_count: usize,
+    pub fields: Vec<FieldProfile>,
+    pub dhoom_bytes: usize,
+    pub json_bytes: usize,
+    pub compression_pct: f64,
+    pub fields_elided_pct: f64,
+}
+
+impl std::fmt::Display for Profile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "DHOOM Profile: {}", self.collection)?;
+        writeln!(f, "  Records: {}  Fields: {}", self.record_count, self.field_count)?;
+        writeln!(f, "  DHOOM: {} bytes  JSON: {} bytes  Savings: {:.0}%",
+            self.dhoom_bytes, self.json_bytes, self.compression_pct)?;
+        writeln!(f, "  Fields elided: {:.0}%", self.fields_elided_pct)?;
+        writeln!(f, "")?;
+        for fp in &self.fields {
+            let role_str = match &fp.role {
+                FieldRole::Arithmetic { start, step } => format!("@ arithmetic ({}+{}n)", start, step),
+                FieldRole::Default { value, match_pct } => format!("| default \"{}\" ({:.0}%)", value, match_pct),
+                FieldRole::Delta => "^ delta".to_string(),
+                FieldRole::Interned { pool_size } => format!("& interned ({} values)", pool_size),
+                FieldRole::Computed { expr } => format!("# computed ({})", expr),
+                FieldRole::Nested => "> nested".to_string(),
+                FieldRole::Variable => "  variable".to_string(),
+            };
+            writeln!(f, "  {:16} {:30} K={:.4}  C={:.4}", fp.name, role_str, fp.curvature, fp.confidence)?;
+        }
+        Ok(())
+    }
+}
+
+/// Compute scalar curvature K = Var / range² for a numeric field.
+fn field_curvature(values: &[f64]) -> f64 {
+    if values.len() < 2 {
+        return 0.0;
+    }
+    let n = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / n;
+    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
+    let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let range = max - min;
+    if range <= 0.0 {
+        return 0.0;
+    }
+    variance / (range * range)
+}
+
+/// Profile a JSON dataset's geometric structure without modifying it.
+///
+/// Returns per-field curvature analysis, compression estimates, and field
+/// classifications. Use this to understand *why* DHOOM compresses well
+/// (or doesn't) for a given dataset.
+///
+/// ```rust,no_run
+/// use dhoom::profile;
+/// use serde_json::json;
+///
+/// let data = json!({
+///     "sensors": [
+///         {"id": 1, "location": "roof", "temp": 22.1, "status": "ok"},
+///         {"id": 2, "location": "roof", "temp": 22.3, "status": "ok"},
+///         {"id": 3, "location": "basement", "temp": 18.5, "status": "ok"}
+///     ]
+/// });
+/// let p = profile(&data).unwrap();
+/// println!("{}", p);
+/// ```
+pub fn profile(value: &Value) -> Result<Profile> {
+    let (collection, records) = match value {
+        Value::Object(map) if map.len() == 1 => {
+            let (key, val) = map.iter().next().unwrap();
+            match val {
+                Value::Array(arr) => (key.clone(), arr.as_slice()),
+                _ => return Err(DhoomError::Encode("Top-level value must be an array".into())),
+            }
+        }
+        _ => return Err(DhoomError::Encode("Expected {collection: [...]}".into())),
+    };
+
+    if records.is_empty() {
+        return Ok(Profile {
+            collection,
+            record_count: 0,
+            field_count: 0,
+            fields: vec![],
+            dhoom_bytes: 0,
+            json_bytes: 2,
+            compression_pct: 0.0,
+            fields_elided_pct: 0.0,
+        });
+    }
+
+    let first = records[0].as_object()
+        .ok_or_else(|| DhoomError::Encode("Records must be objects".into()))?;
+    let keys: Vec<String> = first.keys().cloned().collect();
+
+    // Encode to get real byte counts
+    let dhoom_str = encode(value)?;
+    let json_str = serde_json::to_string(value).unwrap_or_default();
+    let dhoom_bytes = dhoom_str.len();
+    let json_bytes = json_str.len();
+    let compression_pct = if json_bytes > 0 {
+        100.0 * (1.0 - dhoom_bytes as f64 / json_bytes as f64)
+    } else {
+        0.0
+    };
+
+    let mut field_profiles = Vec::new();
+    let mut elided_slots = 0usize;
+    let total_slots = records.len() * keys.len();
+
+    for key in &keys {
+        let values: Vec<&Value> = records.iter()
+            .filter_map(|r| r.as_object().and_then(|o| o.get(key)))
+            .collect();
+
+        // Extract numeric values for curvature
+        let nums: Vec<f64> = values.iter()
+            .filter_map(|v| v.as_f64())
+            .collect();
+        let k = if nums.len() >= 2 { field_curvature(&nums) } else { 0.0 };
+        let conf = 1.0 / (1.0 + k);
+
+        // Classify field role (same logic as encoder)
+        let role = if values.iter().all(|v| v.is_array()) {
+            elided_slots += records.len();
+            FieldRole::Nested
+        } else if let Some((start, step)) = detect_arithmetic(&values) {
+            elided_slots += records.len();
+            FieldRole::Arithmetic {
+                start: value_to_dhoom(&start),
+                step,
+            }
+        } else if let Some(expr) = detect_computed_field(key, records, &keys) {
+            elided_slots += records.len();
+            FieldRole::Computed { expr }
+        } else if detect_delta(&values) {
+            FieldRole::Delta
+        } else if let Some(pool) = detect_interned(&values) {
+            FieldRole::Interned { pool_size: pool.len() }
+        } else if let Some((default_val, match_count)) = find_modal_default(&values) {
+            let pct = 100.0 * match_count as f64 / values.len() as f64;
+            if match_count > records.len() / 2 {
+                elided_slots += match_count;
+                FieldRole::Default { value: value_to_dhoom(&default_val), match_pct: pct }
+            } else {
+                FieldRole::Variable
+            }
+        } else {
+            FieldRole::Variable
+        };
+
+        field_profiles.push(FieldProfile {
+            name: key.clone(),
+            role,
+            curvature: k,
+            confidence: conf,
+        });
+    }
+
+    let fields_elided_pct = if total_slots > 0 {
+        100.0 * elided_slots as f64 / total_slots as f64
+    } else {
+        0.0
+    };
+
+    Ok(Profile {
+        collection,
+        record_count: records.len(),
+        field_count: keys.len(),
+        fields: field_profiles,
+        dhoom_bytes,
+        json_bytes,
+        compression_pct,
+        fields_elided_pct,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1728,5 +1947,144 @@ readings{sensor_id@T-001, timestamp@1710000000+60, value, status|normal, unit|ce
             ]
         });
         assert_eq!(result, expected);
+    }
+
+    // -----------------------------------------------------------------------
+    // Profile API
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_profile_basic() {
+        let data = json!({
+            "sensors": [
+                {"id": 1, "location": "roof", "temp": 22.1, "status": "ok"},
+                {"id": 2, "location": "lobby", "temp": 21.8, "status": "ok"},
+                {"id": 3, "location": "basement", "temp": 18.5, "status": "ok"}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        assert_eq!(p.collection, "sensors");
+        assert_eq!(p.record_count, 3);
+        assert_eq!(p.field_count, 4);
+        assert!(p.compression_pct > 0.0, "Should compress");
+        assert!(p.dhoom_bytes < p.json_bytes, "DHOOM should be smaller");
+    }
+
+    #[test]
+    fn test_profile_arithmetic_field() {
+        let data = json!({
+            "items": [
+                {"id": 100, "name": "A"},
+                {"id": 101, "name": "B"},
+                {"id": 102, "name": "C"}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        let id_field = p.fields.iter().find(|f| f.name == "id").unwrap();
+        assert!(matches!(id_field.role, FieldRole::Arithmetic { .. }));
+        // Arithmetic integer sequence has well-defined curvature (uniform distribution)
+        assert!(id_field.confidence > 0.5, "Arithmetic field should have reasonable confidence");
+    }
+
+    #[test]
+    #[test]
+    fn test_profile_default_field() {
+        // Use enough unique values so interning doesn't trigger first
+        let data = json!({
+            "orders": [
+                {"id": 1, "status": "delivered", "region": "US"},
+                {"id": 2, "status": "delivered", "region": "EU"},
+                {"id": 3, "status": "delivered", "region": "APAC"},
+                {"id": 4, "status": "delivered", "region": "LATAM"},
+                {"id": 5, "status": "shipped", "region": "MEA"},
+                {"id": 6, "status": "delivered", "region": "CAN"}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        let status = p.fields.iter().find(|f| f.name == "status").unwrap();
+        // May be detected as Default or Interned depending on pool threshold
+        match &status.role {
+            FieldRole::Default { value, match_pct } => {
+                assert_eq!(value, "delivered");
+                assert!(*match_pct > 70.0);
+            }
+            FieldRole::Interned { pool_size } => {
+                assert_eq!(*pool_size, 2);
+            }
+            other => panic!("Expected Default or Interned, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_profile_curvature_low_variance() {
+        // All temps close together → low curvature → high confidence
+        let data = json!({
+            "readings": [
+                {"sensor": "A", "temp": 22.0},
+                {"sensor": "B", "temp": 22.1},
+                {"sensor": "C", "temp": 22.2},
+                {"sensor": "D", "temp": 21.9}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        let temp = p.fields.iter().find(|f| f.name == "temp").unwrap();
+        assert!(temp.curvature < 0.25, "Low-variance data should have low K, got {}", temp.curvature);
+        assert!(temp.confidence > 0.8, "Low K should give high confidence, got {}", temp.confidence);
+    }
+
+    #[test]
+    fn test_profile_curvature_high_variance() {
+        // Spread-out values → higher curvature
+        let data = json!({
+            "readings": [
+                {"sensor": "A", "value": 1.0},
+                {"sensor": "B", "value": 50.0},
+                {"sensor": "C", "value": 99.0},
+                {"sensor": "D", "value": 2.0}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        let val = p.fields.iter().find(|f| f.name == "value").unwrap();
+        assert!(val.curvature > 0.05, "Spread data should have higher K, got {}", val.curvature);
+    }
+
+    #[test]
+    fn test_profile_display() {
+        let data = json!({
+            "items": [
+                {"id": 1, "name": "Widget", "price": 10},
+                {"id": 2, "name": "Gadget", "price": 20},
+                {"id": 3, "name": "Doohickey", "price": 15}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        let display = format!("{}", p);
+        assert!(display.contains("DHOOM Profile: items"));
+        assert!(display.contains("Records: 3"));
+        assert!(display.contains("Savings:"));
+    }
+
+    #[test]
+    fn test_profile_empty_dataset() {
+        let data = json!({"things": []});
+        let p = profile(&data).unwrap();
+        assert_eq!(p.record_count, 0);
+        assert_eq!(p.field_count, 0);
+        assert!(p.fields.is_empty());
+    }
+
+    #[test]
+    fn test_profile_elided_pct() {
+        // With arithmetic + defaults, elided percentage should be significant
+        let data = json!({
+            "orders": [
+                {"id": 1, "customer": "A", "status": "ok"},
+                {"id": 2, "customer": "B", "status": "ok"},
+                {"id": 3, "customer": "C", "status": "ok"},
+                {"id": 4, "customer": "D", "status": "ok"}
+            ]
+        });
+        let p = profile(&data).unwrap();
+        assert!(p.fields_elided_pct > 0.0, "Should have elided fields, got {}%", p.fields_elided_pct);
     }
 }
