@@ -1,0 +1,24 @@
+orders{id@ORD-2001, customer!str, payment&, shipping&, status|delivered, items>}:
+&payment[credit_card, paypal, bank_transfer]
+&shipping[standard, express, overnight]
+Alice Chen, 0, 0,
+  {name, qty, price, total#price*qty}:
+  Mechanical Keyboard, 1, 90
+  USB-C Hub, 2, 35
+Bob Martinez, 1, 1, :shipped,
+  {name, qty, price, total#price*qty}:
+  Wireless Mouse, 3, 25
+  Monitor Stand, 1, 46
+  Desk Pad, 2, 20
+Carol Zhang, 0, 2,
+  {name, qty, price, total#price*qty}:
+  Webcam HD, 1, 60
+  Ring Light, 1, 30
+David Kim, 2, 0, :processing,
+  {name, qty, price, total#price*qty}:
+  Laptop Stand, 1, 55
+  Cable Organizer, 4, 9
+Emma Wilson, 1, 1,
+  {name, qty, price, total#price*qty}:
+  Noise-Canceling Headphones, 1, 200
+  Headphone Stand, 1, 30

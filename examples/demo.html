@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DHOOM Demo — E-Commerce Orders</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#1a1a2e;--surface:#16213e;--card:#0f3460;
+  --border:#30405a;--text:#e6edf3;--muted:#8b949e;
+  --accent:#58a6ff;--green:#3fb950;--purple:#bc8cff;
+  --orange:#e8a735;--red:#f85149;--teal:#4ec9b0;
+  --yellow:#dcdcaa;--blue:#569cd6;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.6}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.hero{text-align:center;padding:3rem 1.5rem 2rem;background:linear-gradient(135deg,#0f3460 0%,#1a1a2e 50%,#16213e 100%)}
+.hero .badge{display:inline-block;background:var(--accent);color:#000;font-weight:700;font-size:.75rem;padding:.2rem .6rem;border-radius:4px;letter-spacing:.5px;margin-bottom:1rem}
+.hero h1{font-size:2.5rem;font-weight:300;letter-spacing:-.02em}
+.hero h1 b{font-weight:700}
+.hero .sub{color:var(--muted);font-size:1.1rem;margin-top:.5rem;max-width:600px;margin-left:auto;margin-right:auto}
+
+/* Stats */
+.stats{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;padding:1.5rem;max-width:800px;margin:0 auto}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem;text-align:center;min-width:140px;flex:1}
+.stat .num{font-size:1.8rem;font-weight:700;line-height:1.2}
+.stat .num.green{color:var(--green)}
+.stat .num.accent{color:var(--accent)}
+.stat .num.purple{color:var(--purple)}
+.stat .num.orange{color:var(--orange)}
+.stat .label{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;margin-top:.25rem}
+
+/* Comparison */
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:1200px;margin:2rem auto;padding:0 1.5rem}
+@media(max-width:900px){.comparison{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.panel-head{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-weight:600;font-size:.9rem}
+.panel-head .dot{width:8px;height:8px;border-radius:50%}
+.panel pre{padding:1rem;overflow-x:auto;font-size:.82rem;line-height:1.65;font-family:'Cascadia Code','Fira Code','Consolas',monospace;white-space:pre;tab-size:2}
+.panel pre code{display:block}
+
+/* Syntax highlighting */
+.hi-arith{color:var(--teal);font-weight:600}
+.hi-intern{color:var(--orange);font-weight:600}
+.hi-pool{color:var(--orange)}
+.hi-default{color:var(--yellow)}
+.hi-nest{color:var(--green);font-weight:600}
+.hi-computed{color:var(--purple);font-weight:600}
+.hi-constr{color:var(--blue)}
+.hi-dev{color:var(--red);font-weight:600}
+.hi-idx{color:var(--orange);opacity:.8}
+.hi-field{color:#9cdcfe}
+.hi-bundle{color:var(--text);font-weight:600}
+.hi-brace{color:var(--muted)}
+.json-key{color:#9cdcfe}
+.json-str{color:#ce9178}
+.json-num{color:#b5cea8}
+
+/* Legend */
+.legend{max-width:1200px;margin:2rem auto;padding:0 1.5rem}
+.legend h2{font-size:1.2rem;margin-bottom:1rem;font-weight:600}
+.legend-grid{display:flex;flex-wrap:wrap;gap:.5rem}
+.tag{display:inline-flex;align-items:center;gap:.4rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.35rem .75rem;font-size:.82rem}
+.tag .sigil{font-family:'Cascadia Code','Fira Code','Consolas',monospace;font-weight:700;font-size:.9rem}
+
+/* Orders */
+.orders-section{max-width:1200px;margin:2.5rem auto;padding:0 1.5rem}
+.orders-section h2{font-size:1.2rem;margin-bottom:1rem;font-weight:600}
+.order-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:.75rem;overflow:hidden}
+.order-head{display:flex;align-items:center;gap:1rem;padding:.85rem 1rem;cursor:pointer;flex-wrap:wrap}
+.order-head:hover{background:rgba(88,166,255,.05)}
+.order-id{font-family:monospace;font-weight:700;color:var(--teal);font-size:.95rem}
+.order-customer{flex:1;min-width:120px}
+.order-badge{font-size:.72rem;padding:.15rem .5rem;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.order-badge.delivered{background:rgba(63,185,80,.15);color:var(--green)}
+.order-badge.shipped{background:rgba(88,166,255,.15);color:var(--accent)}
+.order-badge.processing{background:rgba(232,167,53,.15);color:var(--orange)}
+.order-payment{color:var(--muted);font-size:.82rem}
+.order-shipping{color:var(--muted);font-size:.82rem}
+.order-total{font-weight:700;color:var(--green);font-size:.95rem;min-width:60px;text-align:right}
+.order-items{border-top:1px solid var(--border);padding:.5rem 1rem .75rem}
+.items-table{width:100%;font-size:.82rem;border-collapse:collapse}
+.items-table th{text-align:left;color:var(--muted);font-weight:500;padding:.35rem .5rem;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}
+.items-table td{padding:.35rem .5rem;border-top:1px solid rgba(48,64,90,.5)}
+.items-table td:last-child{text-align:right;font-weight:600;color:var(--green)}
+.items-table td:nth-child(3){text-align:right}
+.items-table td:nth-child(2){text-align:center}
+.chevron{color:var(--muted);font-size:.7rem;transition:transform .2s}
+.chevron.open{transform:rotate(90deg)}
+
+/* Footer */
+footer{text-align:center;padding:2.5rem 1.5rem;color:var(--muted);font-size:.85rem}
+footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="badge">SAMPLE APPLICATION</div>
+  <h1><b>DHOOM</b> in Action</h1>
+  <p class="sub">E-Commerce Order Management — a real-world dataset showcasing 7 DHOOM features in a single file</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="num accent" id="dhoom-size">—</div><div class="label">DHOOM bytes</div></div>
+  <div class="stat"><div class="num" id="json-size">—</div><div class="label">JSON bytes</div></div>
+  <div class="stat"><div class="num green" id="savings">—</div><div class="label">Smaller</div></div>
+  <div class="stat"><div class="num purple">7</div><div class="label">Features used</div></div>
+</div>
+
+<div class="comparison">
+  <div class="panel">
+    <div class="panel-head"><div class="dot" style="background:var(--accent)"></div> ecommerce.dhoom</div>
+    <pre><code id="dhoom-code"></code></pre>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><div class="dot" style="background:var(--orange)"></div> equivalent JSON</div>
+    <pre><code id="json-code"></code></pre>
+  </div>
+</div>
+
+<div class="legend">
+  <h2>Feature Legend</h2>
+  <div class="legend-grid">
+    <div class="tag"><span class="sigil" style="color:var(--teal)">@</span> Arithmetic — auto-incrementing IDs</div>
+    <div class="tag"><span class="sigil" style="color:var(--orange)">&amp;</span> Interning — deduplicated string pool</div>
+    <div class="tag"><span class="sigil" style="color:var(--purple)">#</span> Computed — derived field (price×qty)</div>
+    <div class="tag"><span class="sigil" style="color:var(--yellow)">|</span> Default — modal value compression</div>
+    <div class="tag"><span class="sigil" style="color:var(--green)">&gt;</span> Nesting — hierarchical sub-bundles</div>
+    <div class="tag"><span class="sigil" style="color:var(--blue)">!</span> Constraint — inline type validation</div>
+    <div class="tag"><span class="sigil" style="color:var(--red)">:</span> Deviation — overrides a default</div>
+  </div>
+</div>
+
+<div class="orders-section">
+  <h2>Decoded Data</h2>
+  <div id="orders"></div>
+</div>
+
+<footer>
+  Built with <a href="https://dhoom.dev">DHOOM</a> — Davis Human-readable Optimized Object Markup
+</footer>
+
+<script>
+// ── Data ────────────────────────────────────────────
+const dhoomSrc = `orders{id@ORD-2001, customer!str, payment&, shipping&, status|delivered, items>}:
+&payment[credit_card, paypal, bank_transfer]
+&shipping[standard, express, overnight]
+Alice Chen, 0, 0,
+  {name, qty, price, total#price*qty}:
+  Mechanical Keyboard, 1, 90
+  USB-C Hub, 2, 35
+Bob Martinez, 1, 1, :shipped,
+  {name, qty, price, total#price*qty}:
+  Wireless Mouse, 3, 25
+  Monitor Stand, 1, 46
+  Desk Pad, 2, 20
+Carol Zhang, 0, 2,
+  {name, qty, price, total#price*qty}:
+  Webcam HD, 1, 60
+  Ring Light, 1, 30
+David Kim, 2, 0, :processing,
+  {name, qty, price, total#price*qty}:
+  Laptop Stand, 1, 55
+  Cable Organizer, 4, 9
+Emma Wilson, 1, 1,
+  {name, qty, price, total#price*qty}:
+  Noise-Canceling Headphones, 1, 200
+  Headphone Stand, 1, 30`;
+
+const orders = [
+  {id:"ORD-2001",customer:"Alice Chen",payment:"credit_card",shipping:"standard",status:"delivered",
+   items:[{name:"Mechanical Keyboard",qty:1,price:90,total:90},{name:"USB-C Hub",qty:2,price:35,total:70}]},
+  {id:"ORD-2002",customer:"Bob Martinez",payment:"paypal",shipping:"express",status:"shipped",
+   items:[{name:"Wireless Mouse",qty:3,price:25,total:75},{name:"Monitor Stand",qty:1,price:46,total:46},{name:"Desk Pad",qty:2,price:20,total:40}]},
+  {id:"ORD-2003",customer:"Carol Zhang",payment:"credit_card",shipping:"overnight",status:"delivered",
+   items:[{name:"Webcam HD",qty:1,price:60,total:60},{name:"Ring Light",qty:1,price:30,total:30}]},
+  {id:"ORD-2004",customer:"David Kim",payment:"bank_transfer",shipping:"standard",status:"processing",
+   items:[{name:"Laptop Stand",qty:1,price:55,total:55},{name:"Cable Organizer",qty:4,price:9,total:36}]},
+  {id:"ORD-2005",customer:"Emma Wilson",payment:"paypal",shipping:"express",status:"delivered",
+   items:[{name:"Noise-Canceling Headphones",qty:1,price:200,total:200},{name:"Headphone Stand",qty:1,price:30,total:30}]}
+];
+
+// ── Stats ───────────────────────────────────────────
+const jsonObj = {orders};
+const jsonMin = JSON.stringify(jsonObj);
+const dhoomBytes = new TextEncoder().encode(dhoomSrc).length;
+const jsonBytes = new TextEncoder().encode(jsonMin).length;
+const pct = Math.round((1 - dhoomBytes / jsonBytes) * 100);
+document.getElementById("dhoom-size").textContent = dhoomBytes + "B";
+document.getElementById("json-size").textContent = jsonBytes > 999 ? (jsonBytes/1000).toFixed(1)+"KB" : jsonBytes+"B";
+document.getElementById("savings").textContent = pct + "%";
+
+// ── Syntax-highlighted DHOOM ────────────────────────
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;")}
+function hiDhoom(src){
+  return src.split("\n").map(line => {
+    const t = line.trim();
+    // Pool lines
+    if (t.startsWith("&")) {
+      const e = esc(line);
+      return `<span class="hi-pool">${e}</span>`;
+    }
+    // Header lines
+    if (t.includes("{") && t.includes("}")) {
+      let e = esc(line);
+      e = e.replace(/@[\w-]+(\+\d+)?/g, '<span class="hi-arith">$&</span>');
+      e = e.replace(/![\w:\/]+/g, '<span class="hi-constr">$&</span>');
+      e = e.replace(/#[\w*+\-]+/g, '<span class="hi-computed">$&</span>');
+      e = e.replace(/\|[\w]+/g, '<span class="hi-default">$&</span>');
+      e = e.replace(/(\w)&amp;/g, '$1<span class="hi-intern">&amp;</span>');
+      e = e.replace(/&gt;(?=})/g, '<span class="hi-nest">&gt;</span>');
+      return e;
+    }
+    // Record lines
+    let e = esc(line);
+    e = e.replace(/:(\w+)/g, '<span class="hi-dev">:$1</span>');
+    // Highlight lone integers (pool indices) after customer name in parent records
+    if (!t.startsWith(" ") && t.match(/,\s*\d+\s*,\s*\d+/)) {
+      e = e.replace(/,\s*(\d)\s*,\s*(\d)/g, ', <span class="hi-idx">$1</span>, <span class="hi-idx">$2</span>');
+    }
+    return e;
+  }).join("\n");
+}
+document.getElementById("dhoom-code").innerHTML = hiDhoom(dhoomSrc);
+
+// ── Formatted JSON ──────────────────────────────────
+function hiJson(obj) {
+  const s = JSON.stringify(obj, null, 2);
+  return s
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/"([^"]+)"(?=\s*:)/g, '<span class="json-key">"$1"</span>')
+    .replace(/:\s*"([^"]*)"/g, ': <span class="json-str">"$1"</span>')
+    .replace(/:\s*(\d+)/g, ': <span class="json-num">$1</span>');
+}
+document.getElementById("json-code").innerHTML = hiJson(jsonObj);
+
+// ── Order cards ─────────────────────────────────────
+const el = document.getElementById("orders");
+orders.forEach(o => {
+  const orderTotal = o.items.reduce((s,i) => s + i.total, 0);
+  const card = document.createElement("div");
+  card.className = "order-card";
+  card.innerHTML = `
+    <div class="order-head" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.chevron').classList.toggle('open')">
+      <span class="chevron">&#9654;</span>
+      <span class="order-id">${o.id}</span>
+      <span class="order-customer">${o.customer}</span>
+      <span class="order-badge ${o.status}">${o.status}</span>
+      <span class="order-payment">${o.payment.replace(/_/g," ")}</span>
+      <span class="order-shipping">${o.shipping}</span>
+      <span class="order-total">$${orderTotal}</span>
+    </div>
+    <div class="order-items" style="display:none">
+      <table class="items-table">
+        <tr><th>Product</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+        ${o.items.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>$${i.price}</td><td>$${i.total}</td></tr>`).join("")}
+      </table>
+    </div>`;
+  el.appendChild(card);
+});
+</script>
+</body>
+</html>
